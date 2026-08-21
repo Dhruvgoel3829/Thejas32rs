@@ -1,4 +1,3 @@
-// src/cpu/decode.rs
 
 #[derive(Debug, Clone, Copy)]
 pub struct Instruction(pub u32);
