@@ -1,11 +1,14 @@
+pub mod csr;
 pub mod decode;
 
 use crate::bus::Bus;
+use csr::Csr;
 use decode::Instruction;
 
 pub struct Cpu {
     pub regs: [u32; 32],
     pub pc: u32,
+    pub csr: Csr,
     pub bus: Bus,
 }
 
@@ -14,6 +17,7 @@ impl Cpu {
         Self {
             regs: [0; 32],
             pc: entry_point,
+            csr: Csr::new(),
             bus,
         }
     }
@@ -34,8 +38,14 @@ impl Cpu {
         let raw = self.bus.read_u32(self.pc);
         let inst = Instruction(raw);
         let mut next_pc = self.pc.wrapping_add(4);
+        self.csr.cycle += 1;
 
         match inst.opcode() {
+            0x0F => {
+                // In a single-threaded functional emulator, memory ordering is sequential.
+                // Treat as NOP.
+            }
+
             // LUI
             0x37 => {
                 self.write_reg(inst.rd(), inst.imm_u());
@@ -115,8 +125,6 @@ impl Cpu {
                 self.write_reg(inst.rd(), res);
             }
 
-            
-
             // --- JAL (Jump and Link) ---
             0x6F => {
                 self.write_reg(inst.rd(), self.pc.wrapping_add(4));
@@ -172,6 +180,79 @@ impl Cpu {
                     0x1 => self.bus.write_u16(addr, val as u16),
                     0x2 => self.bus.write_u32(addr, val),
                     _ => unimplemented!("Unsupported STORE funct3"),
+                }
+            }
+
+            // --- SYSTEM / CSR (0x73) ---
+            0x73 => {
+                let funct3 = inst.funct3();
+                let csr_addr = (raw >> 20) as u16;
+
+                match funct3 {
+                    // Privileged / Environment Calls (funct3 == 0)
+                    0x0 => {
+                        let funct12 = (raw >> 20) & 0xFFF;
+                        match funct12 {
+                            0x000 => {
+                                // ECALL
+                                println!("[TRAP] ECALL triggered at PC: {:#x}", self.pc);
+                                self.csr.mepc = self.pc;
+                                self.csr.mcause = 11; // Machine ECALL cause
+                                next_pc = self.csr.mtvec;
+                            }
+                            0x001 => {
+                                // EBREAK
+                                println!("[TRAP] EBREAK triggered at PC: {:#x}", self.pc);
+                                self.csr.mepc = self.pc;
+                                self.csr.mcause = 3; // Breakpoint cause
+                                next_pc = self.csr.mtvec;
+                            }
+                            0x302 => {
+                                // MRET (Return from machine mode exception)
+                                next_pc = self.csr.mepc;
+                            }
+                            0x105 => { // WFI (Wait For Interrupt)
+                                // No-op in single-step mode
+                            }
+                            _ => unimplemented!("System funct12: {:#x}", funct12),
+                        }
+                    }
+
+                    // Register-based CSR instructions
+                    0x1 | 0x2 | 0x3 => {
+                        // CSRRW, CSRRS, CSRRC
+                        let t = self.csr.read(csr_addr);
+                        let src = self.read_reg(inst.rs1());
+
+                        let new_val = match funct3 {
+                            0x1 => src,        // CSRRW (write)
+                            0x2 => t | src,    // CSRRS (set bits)
+                            0x3 => t & (!src), // CSRRC (clear bits)
+                            _ => unreachable!(),
+                        };
+
+                        self.csr.write(csr_addr, new_val);
+                        self.write_reg(inst.rd(), t);
+                    }
+
+                    // Immediate-based CSR instructions
+                    0x5 | 0x6 | 0x7 => {
+                        // CSRRWI, CSRRSI, CSRRCI
+                        let t = self.csr.read(csr_addr);
+                        let zimm = inst.rs1() as u32; // Immediate stored in rs1 field
+
+                        let new_val = match funct3 {
+                            0x5 => zimm,        // CSRRWI
+                            0x6 => t | zimm,    // CSRRSI
+                            0x7 => t & (!zimm), // CSRRCI
+                            _ => unreachable!(),
+                        };
+
+                        self.csr.write(csr_addr, new_val);
+                        self.write_reg(inst.rd(), t);
+                    }
+
+                    _ => unimplemented!("System funct3: {:#x}", funct3),
                 }
             }
 
