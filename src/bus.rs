@@ -1,8 +1,8 @@
 // src/bus.rs
-use std::fs;
-use goblin::elf::Elf;
+use crate::clint::{CLINT_BASE, Clint};
 use crate::uart::Uart;
-use crate::clint::{Clint, CLINT_BASE};
+use goblin::elf::Elf;
+use std::fs;
 
 pub const RAM_BASE: u32 = 0x8000_0000;
 pub const RAM_SIZE: usize = 512 * 1024;
@@ -48,7 +48,7 @@ impl Bus {
         elf.entry as u32
     }
 
-    pub fn read_u8(&self, addr: u32) -> u8 {
+    pub fn read_u8(&mut self, addr: u32) -> u8 {
         match addr {
             RAM_BASE..=0x8007_FFFF => {
                 let offset = (addr - RAM_BASE) as usize;
@@ -72,13 +72,13 @@ impl Bus {
         }
     }
 
-    pub fn read_u16(&self, addr: u32) -> u16 {
+    pub fn read_u16(&mut self, addr: u32) -> u16 {
         let b0 = self.read_u8(addr) as u16;
         let b1 = self.read_u8(addr + 1) as u16;
         b0 | (b1 << 8)
     }
 
-    pub fn read_u32(&self, addr: u32) -> u32 {
+    pub fn read_u32(&mut self, addr: u32) -> u32 {
         let b0 = self.read_u8(addr) as u32;
         let b1 = self.read_u8(addr + 1) as u32;
         let b2 = self.read_u8(addr + 2) as u32;
