@@ -1,6 +1,7 @@
 // src/main.rs
 mod bus;
 mod cpu;
+mod uart;
 
 use bus::Bus;
 use cpu::Cpu;
@@ -8,33 +9,37 @@ use cpu::Cpu;
 fn main() {
     let mut bus = Bus::new();
 
-    // 0x00: csrw mtvec, x1 (set trap vector to 0x100) -> csrrw x0, mtvec, x1
-    // 0x04: ecall          (triggers trap to mtvec=0x100)
-    // 0x08: addi x2, x0, 77 (runs after mret returns)
-    //
-    // --- Trap Handler at 0x100 ---
-    // 0x100: addi mepc, mepc, 4 (advance mepc past ecall instruction)
-    // 0x104: mret               (return to mepc)
+    // 1. Put the string "Hello, THEJAS32!\n\0" at address 0x200
+    let message = b"Hello, THEJAS32!\n\0";
+    for (i, &byte) in message.iter().enumerate() {
+        bus.write_u8(0x200 + i as u32, byte);
+    }
 
-    // Setup x1 = 0x100 (trap handler address)
-    bus.write_u32(0x00, 0x10000093); // addi x1, x0, 0x100
-    bus.write_u32(0x04, 0x30509073); // csrrw x0, mtvec(0x305), x1
-    bus.write_u32(0x08, 0x00000073); // ecall
-    bus.write_u32(0x0c, 0x04d00113); // addi x2, x0, 77
+    // 2. Machine code loop to print string to UART (0x1000_0000):
+    // 0x00: lui  x1, 0x10000      (x1 = UART_BASE = 0x10000000)
+    // 0x04: addi x2, x0, 0x200    (x2 = pointer to string = 0x200)
+    // Loop:
+    // 0x08: lb   x3, 0(x2)        (x3 = *x2)
+    // 0x0c: beq  x3, x0, 16       (if x3 == 0 goto Exit at 0x1c)
+    // 0x10: sb   x3, 0(x1)        (UART_THR = x3 -> writes char to stdout)
+    // 0x14: addi x2, x2, 1        (x2++)
+    // 0x18: jal  x0, -16          (jump back to 0x08)
+    // Exit:
+    // 0x1c: ecall
 
-    // Trap handler at 0x100:
-    // Read mepc, add 4, write back, then mret
-    bus.write_u32(0x100, 0x34102173); // csrr x2, mepc (csrs x2, mepc, x0)
-    bus.write_u32(0x104, 0x00410113); // addi x2, x2, 4
-    bus.write_u32(0x108, 0x34111073); // csrw mepc, x2
-    bus.write_u32(0x10c, 0x30200073); // mret
+    bus.write_u32(0x00, 0x100000b7); // lui  x1, 0x10000
+    bus.write_u32(0x04, 0x20000113); // addi x2, x0, 0x200
+    bus.write_u32(0x08, 0x00010183); // lb   x3, 0(x2)
+    bus.write_u32(0x0c, 0x00018863); // beq  x3, x0, 16 (offset +16 -> 0x1c)
+    bus.write_u32(0x10, 0x00308023); // sb   x3, 0(x1)
+    bus.write_u32(0x14, 0x00110113); // addi x2, x2, 1
+    bus.write_u32(0x18, 0xff1ff06f); // jal  x0, -16 (offset -16 -> 0x08)
 
     let mut cpu = Cpu::new(bus, 0x0);
 
-    for _ in 0..8 {
+    println!("--- Emulating THEJAS32 UART Output ---");
+    while cpu.pc < 0x1c {
         cpu.step();
     }
-
-    println!("Register x2 (after trap return): {}", cpu.read_reg(2)); // 77
-    println!("Final PC: {:#x}", cpu.pc);
+    println!("--- Execution Finished ---");
 }
