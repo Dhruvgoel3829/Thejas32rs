@@ -1,4 +1,5 @@
 mod bus;
+mod clint;
 mod cpu;
 mod uart;
 

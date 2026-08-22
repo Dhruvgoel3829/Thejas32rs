@@ -2,13 +2,15 @@
 use std::fs;
 use goblin::elf::Elf;
 use crate::uart::Uart;
+use crate::clint::{Clint, CLINT_BASE};
 
-pub const RAM_BASE: u32 = 0x8000_0000; // Standard C-DAC THEJAS32 SRAM Base
-pub const RAM_SIZE: usize = 512 * 1024; // 512 KB SRAM buffer
+pub const RAM_BASE: u32 = 0x8000_0000;
+pub const RAM_SIZE: usize = 512 * 1024;
 
 pub struct Bus {
     pub ram: Vec<u8>,
     pub uart: Uart,
+    pub clint: Clint,
 }
 
 impl Bus {
@@ -16,6 +18,7 @@ impl Bus {
         Self {
             ram: vec![0; RAM_SIZE],
             uart: Uart::new(),
+            clint: Clint::new(),
         }
     }
 
@@ -24,7 +27,6 @@ impl Bus {
         let elf = Elf::parse(&buffer).expect("Failed to parse ELF");
 
         for ph in elf.program_headers.iter() {
-            // PT_LOAD = 1
             if ph.p_type == 1 {
                 let vaddr = ph.p_vaddr as u32;
                 let offset = ph.p_offset as usize;
@@ -33,12 +35,10 @@ impl Bus {
 
                 let segment_data = &buffer[offset..offset + filesz];
 
-                // Write segment data into RAM
                 for (i, &byte) in segment_data.iter().enumerate() {
                     self.write_u8(vaddr + i as u32, byte);
                 }
 
-                // Zero-fill the remaining BSS section if memsz > filesz
                 for i in filesz..memsz {
                     self.write_u8(vaddr + i as u32, 0);
                 }
@@ -55,6 +55,7 @@ impl Bus {
                 self.ram[offset]
             }
             0x1000_0000..=0x1000_00FF => self.uart.read_u8(addr - 0x1000_0000),
+            0x0200_0000..=0x0200_FFFF => self.clint.read_u8(addr - CLINT_BASE),
             _ => 0,
         }
     }
@@ -66,6 +67,7 @@ impl Bus {
                 self.ram[offset] = val;
             }
             0x1000_0000..=0x1000_00FF => self.uart.write_u8(addr - 0x1000_0000, val),
+            0x0200_0000..=0x0200_FFFF => self.clint.write_u8(addr - CLINT_BASE, val),
             _ => {}
         }
     }
