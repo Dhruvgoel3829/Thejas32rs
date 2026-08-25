@@ -1,9 +1,11 @@
-use std::io::{self, Read, Write};
+use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use std::io::{self, Write};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
+use std::time::Duration;
 
-const UART_RHR_THR: u32 = 0x00; // Rx Buffer (read) / Tx Holding (write)
-const UART_LSR: u32     = 0x05; // Line Status Register
+const UART_RHR_THR: u32 = 0x00;
+const UART_LSR: u32 = 0x05;
 
 pub struct Uart {
     rx_receiver: Receiver<u8>,
@@ -14,13 +16,35 @@ impl Uart {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel();
 
-        // Spawn a background thread to read raw host stdin asynchronously
+        // Background worker thread for polling raw terminal events
         thread::spawn(move || {
-            let mut stdin = io::stdin().lock();
-            let mut buf = [0u8; 1];
-            while let Ok(n) = stdin.read(&mut buf) {
-                if n > 0 {
-                    let _ = tx.send(buf[0]);
+            loop {
+                // Poll every 10ms so we don't pin the host CPU thread
+                if event::poll(Duration::from_millis(10)).unwrap_or(false) {
+                    if let Ok(Event::Key(key_event)) = event::read() {
+                        // Only handle Key Press, ignore Release / Repeat
+                        if key_event.kind == crossterm::event::KeyEventKind::Press {
+                            if key_event.modifiers.contains(KeyModifiers::CONTROL)
+                                && key_event.code == KeyCode::Char('c')
+                            {
+                                let _ = crossterm::terminal::disable_raw_mode();
+                                std::process::exit(0);
+                            }
+
+                            let byte_to_send = match key_event.code {
+                                KeyCode::Char(c) => Some(c as u8),
+                                KeyCode::Enter => Some(b'\r'),
+                                KeyCode::Backspace => Some(0x7F), // Standard DEL/Backspace
+                                KeyCode::Tab => Some(b'\t'),
+                                KeyCode::Esc => Some(0x1B),
+                                _ => None,
+                            };
+
+                            if let Some(byte) = byte_to_send {
+                                let _ = tx.send(byte);
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -32,7 +56,6 @@ impl Uart {
     }
 
     pub fn read_u8(&mut self, offset: u32) -> u8 {
-        // Poll channel if buffer is empty
         if self.rx_buffer.is_none() {
             if let Ok(byte) = self.rx_receiver.try_recv() {
                 self.rx_buffer = Some(byte);
@@ -40,14 +63,11 @@ impl Uart {
         }
 
         match offset {
-            UART_RHR_THR => {
-                let byte = self.rx_buffer.take().unwrap_or(0);
-                byte
-            }
+            UART_RHR_THR => self.rx_buffer.take().unwrap_or(0),
             UART_LSR => {
-                let mut lsr = 0x60; // TX always empty/ready
+                let mut lsr = 0x60; // TX always ready
                 if self.rx_buffer.is_some() {
-                    lsr |= 0x01; // Data Ready bit
+                    lsr |= 0x01; // Data ready bit
                 }
                 lsr
             }

@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 goblin = "0.8"
+crossterm = "0.28"

@@ -6,6 +6,22 @@ mod uart;
 use bus::Bus;
 use cpu::Cpu;
 use std::env;
+use crossterm::terminal::{enable_raw_mode, disable_raw_mode};
+
+struct RawModeGuard;
+
+impl RawModeGuard {
+    pub fn enter() -> Self {
+        enable_raw_mode().expect("Failed to enable raw mode");
+        Self
+    }
+}
+
+impl Drop for RawModeGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+    }
+}
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -22,17 +38,15 @@ fn main() {
     println!("[INFO] Entry point: {:#x}", entry_point);
 
     let mut cpu = Cpu::new(bus, entry_point);
+    cpu.write_reg(2, 0x8007_0000); // Initialize Stack Pointer (sp)
 
-    // Initialize Stack Pointer (sp = x2) near the top of SRAM (0x8007_0000)
-    cpu.write_reg(2, 0x8007_0000);
+    // Activate raw terminal mode
+    let _raw_guard = RawModeGuard::enter();
 
-    // Run execution loop
     loop {
         cpu.step();
 
-        // Break on unaligned PC or zero instruction as safety guard
         if cpu.pc == 0 {
-            println!("\n[INFO] Target halted (PC = 0).");
             break;
         }
     }
