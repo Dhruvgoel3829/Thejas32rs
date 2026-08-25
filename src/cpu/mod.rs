@@ -35,24 +35,43 @@ impl Cpu {
         }
     }
 
+    // src/cpu/mod.rs (inside check_interrupts)
     fn check_interrupts(&mut self) -> Option<u32> {
-        // Update MTIP bit (bit 7) in MIP based on CLINT status
+        // 1. Update Timer Pending (MTIP, bit 7)
         if self.bus.clint.is_interrupt_pending() {
             self.csr.mip |= 1 << 7;
         } else {
             self.csr.mip &= !(1 << 7);
         }
 
+        // 2. Update External Pending (MEIP, bit 11)
+        if self.bus.plic.is_interrupt_pending() {
+            self.csr.mip |= 1 << 11;
+        } else {
+            self.csr.mip &= !(1 << 11);
+        }
+
         let mstatus_mie = (self.csr.mstatus & (1 << 3)) != 0;
+        if !mstatus_mie {
+            return None;
+        }
+
+        let mie_meie = (self.csr.mie & (1 << 11)) != 0;
+        let mip_meip = (self.csr.mip & (1 << 11)) != 0;
+
+        // External interrupts have higher priority than timer interrupts
+        if mie_meie && mip_meip {
+            return Some(0x8000_000B); // Machine External Interrupt cause
+        }
+
         let mie_mtie = (self.csr.mie & (1 << 7)) != 0;
         let mip_mtip = (self.csr.mip & (1 << 7)) != 0;
 
-        // Machine Timer Interrupt condition
-        if mstatus_mie && mie_mtie && mip_mtip {
-            Some(0x8000_0007) // Cause for Machine Timer Interrupt
-        } else {
-            None
+        if mie_mtie && mip_mtip {
+            return Some(0x8000_0007); // Machine Timer Interrupt cause
         }
+
+        None
     }
 
     fn handle_trap(&mut self, cause: u32, epc: u32) {
@@ -90,7 +109,8 @@ impl Cpu {
         match inst.opcode() {
             0x0F => {} // FENCE
 
-            0x73 => { // SYSTEM / CSR
+            0x73 => {
+                // SYSTEM / CSR
                 let funct3 = inst.funct3();
                 let csr_addr = (raw >> 20) as u16;
 
@@ -98,15 +118,18 @@ impl Cpu {
                     0x0 => {
                         let funct12 = (raw >> 20) & 0xFFF;
                         match funct12 {
-                            0x000 => { // ECALL
+                            0x000 => {
+                                // ECALL
                                 self.handle_trap(11, self.pc);
                                 return;
                             }
-                            0x001 => { // EBREAK
+                            0x001 => {
+                                // EBREAK
                                 self.handle_trap(3, self.pc);
                                 return;
                             }
-                            0x302 => { // MRET
+                            0x302 => {
+                                // MRET
                                 // Restore MIE from MPIE
                                 let mpie = (self.csr.mstatus >> 7) & 1;
                                 self.csr.mstatus = (self.csr.mstatus & !(1 << 3)) | (mpie << 3);
@@ -156,8 +179,20 @@ impl Cpu {
                 let imm = inst.imm_i();
                 let res = match inst.funct3() {
                     0x0 => src.wrapping_add(imm),
-                    0x2 => if (src as i32) < (imm as i32) { 1 } else { 0 },
-                    0x3 => if src < imm { 1 } else { 0 },
+                    0x2 => {
+                        if (src as i32) < (imm as i32) {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    0x3 => {
+                        if src < imm {
+                            1
+                        } else {
+                            0
+                        }
+                    }
                     0x4 => src ^ imm,
                     0x6 => src | imm,
                     0x7 => src & imm,
@@ -180,8 +215,20 @@ impl Cpu {
                     (0x00, 0x0) => s1.wrapping_add(s2),
                     (0x20, 0x0) => s1.wrapping_sub(s2),
                     (0x00, 0x1) => s1 << (s2 & 0x1F),
-                    (0x00, 0x2) => if (s1 as i32) < (s2 as i32) { 1 } else { 0 },
-                    (0x00, 0x3) => if s1 < s2 { 1 } else { 0 },
+                    (0x00, 0x2) => {
+                        if (s1 as i32) < (s2 as i32) {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    (0x00, 0x3) => {
+                        if s1 < s2 {
+                            1
+                        } else {
+                            0
+                        }
+                    }
                     (0x00, 0x4) => s1 ^ s2,
                     (0x00, 0x5) => s1 >> (s2 & 0x1F),
                     (0x20, 0x5) => ((s1 as i32) >> (s2 & 0x1F)) as u32,
@@ -194,15 +241,39 @@ impl Cpu {
                     (0x01, 0x4) => {
                         let a = s1 as i32;
                         let b = s2 as i32;
-                        if b == 0 { 0xFFFF_FFFF } else if a == i32::MIN && b == -1 { i32::MIN as u32 } else { (a / b) as u32 }
+                        if b == 0 {
+                            0xFFFF_FFFF
+                        } else if a == i32::MIN && b == -1 {
+                            i32::MIN as u32
+                        } else {
+                            (a / b) as u32
+                        }
                     }
-                    (0x01, 0x5) => if s2 == 0 { 0xFFFF_FFFF } else { s1 / s2 },
+                    (0x01, 0x5) => {
+                        if s2 == 0 {
+                            0xFFFF_FFFF
+                        } else {
+                            s1 / s2
+                        }
+                    }
                     (0x01, 0x6) => {
                         let a = s1 as i32;
                         let b = s2 as i32;
-                        if b == 0 { s1 } else if a == i32::MIN && b == -1 { 0 } else { (a % b) as u32 }
+                        if b == 0 {
+                            s1
+                        } else if a == i32::MIN && b == -1 {
+                            0
+                        } else {
+                            (a % b) as u32
+                        }
                     }
-                    (0x01, 0x7) => if s2 == 0 { s1 } else { s1 % s2 },
+                    (0x01, 0x7) => {
+                        if s2 == 0 {
+                            s1
+                        } else {
+                            s1 % s2
+                        }
+                    }
                     _ => unimplemented!("Unsupported R/M type: {inst:?}"),
                 };
                 self.write_reg(inst.rd(), res);

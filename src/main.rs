@@ -2,6 +2,7 @@ mod bus;
 mod clint;
 mod cpu;
 mod uart;
+mod plic;
 
 use bus::Bus;
 use cpu::Cpu;

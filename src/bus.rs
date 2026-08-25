@@ -1,8 +1,8 @@
-// src/bus.rs
-use crate::clint::{CLINT_BASE, Clint};
-use crate::uart::Uart;
-use goblin::elf::Elf;
 use std::fs;
+use goblin::elf::Elf;
+use crate::uart::Uart;
+use crate::clint::{Clint, CLINT_BASE};
+use crate::plic::{Plic, PLIC_BASE};
 
 pub const RAM_BASE: u32 = 0x8000_0000;
 pub const RAM_SIZE: usize = 512 * 1024;
@@ -11,6 +11,7 @@ pub struct Bus {
     pub ram: Vec<u8>,
     pub uart: Uart,
     pub clint: Clint,
+    pub plic: Plic,
 }
 
 impl Bus {
@@ -19,6 +20,7 @@ impl Bus {
             ram: vec![0; RAM_SIZE],
             uart: Uart::new(),
             clint: Clint::new(),
+            plic: Plic::new(),
         }
     }
 
@@ -56,6 +58,12 @@ impl Bus {
             }
             0x1000_0000..=0x1000_00FF => self.uart.read_u8(addr - 0x1000_0000),
             0x0200_0000..=0x0200_FFFF => self.clint.read_u8(addr - CLINT_BASE),
+            0x0C00_0000..=0x0C3F_FFFF => {
+                let offset = addr - PLIC_BASE;
+                let word_offset = offset & !0x3;
+                let shift = (offset & 0x3) * 8;
+                ((self.plic.read_u32(word_offset) >> shift) & 0xFF) as u8
+            }
             _ => 0,
         }
     }
@@ -68,6 +76,14 @@ impl Bus {
             }
             0x1000_0000..=0x1000_00FF => self.uart.write_u8(addr - 0x1000_0000, val),
             0x0200_0000..=0x0200_FFFF => self.clint.write_u8(addr - CLINT_BASE, val),
+            0x0C00_0000..=0x0C3F_FFFF => {
+                let offset = addr - PLIC_BASE;
+                let word_offset = offset & !0x3;
+                let mut current = self.plic.read_u32(word_offset);
+                let shift = (offset & 0x3) * 8;
+                current = (current & !(0xFF << shift)) | ((val as u32) << shift);
+                self.plic.write_u32(word_offset, current);
+            }
             _ => {}
         }
     }
@@ -79,6 +95,10 @@ impl Bus {
     }
 
     pub fn read_u32(&mut self, addr: u32) -> u32 {
+        if (0x0C00_0000..=0x0C3F_FFFF).contains(&addr) && (addr % 4 == 0) {
+            return self.plic.read_u32(addr - PLIC_BASE);
+        }
+
         let b0 = self.read_u8(addr) as u32;
         let b1 = self.read_u8(addr + 1) as u32;
         let b2 = self.read_u8(addr + 2) as u32;
@@ -92,6 +112,11 @@ impl Bus {
     }
 
     pub fn write_u32(&mut self, addr: u32, val: u32) {
+        if (0x0C00_0000..=0x0C3F_FFFF).contains(&addr) && (addr % 4 == 0) {
+            self.plic.write_u32(addr - PLIC_BASE, val);
+            return;
+        }
+
         self.write_u8(addr, val as u8);
         self.write_u8(addr + 1, (val >> 8) as u8);
         self.write_u8(addr + 2, (val >> 16) as u8);
