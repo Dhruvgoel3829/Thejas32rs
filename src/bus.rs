@@ -1,8 +1,8 @@
-use std::fs;
-use goblin::elf::Elf;
+use crate::clint::{CLINT_BASE, Clint};
+use crate::plic::{PLIC_BASE, Plic};
 use crate::uart::Uart;
-use crate::clint::{Clint, CLINT_BASE};
-use crate::plic::{Plic, PLIC_BASE};
+use goblin::elf::Elf;
+use std::fs;
 
 pub const RAM_BASE: u32 = 0x8000_0000;
 pub const RAM_SIZE: usize = 512 * 1024;
@@ -56,7 +56,10 @@ impl Bus {
                 let offset = (addr - RAM_BASE) as usize;
                 self.ram[offset]
             }
-            0x1000_0000..=0x1000_00FF => self.uart.read_u8(addr - 0x1000_0000),
+            0x1000_0000..=0x1000_00FF => {
+                let val = self.uart.read_u8(addr - 0x1000_0000);
+                val
+            }
             0x0200_0000..=0x0200_FFFF => self.clint.read_u8(addr - CLINT_BASE),
             0x0C00_0000..=0x0C3F_FFFF => {
                 let offset = addr - PLIC_BASE;

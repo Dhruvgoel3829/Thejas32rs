@@ -35,22 +35,22 @@ impl Cpu {
         }
     }
 
-    // src/cpu/mod.rs (inside check_interrupts)
     fn check_interrupts(&mut self) -> Option<u32> {
-        // 1. Update Timer Pending (MTIP, bit 7)
+        // 1. Update Timer Pending bit in MIP (bit 7: MTIP)
         if self.bus.clint.is_interrupt_pending() {
             self.csr.mip |= 1 << 7;
         } else {
             self.csr.mip &= !(1 << 7);
         }
 
-        // 2. Update External Pending (MEIP, bit 11)
+        // 2. Update External Pending bit in MIP (bit 11: MEIP)
         if self.bus.plic.is_interrupt_pending() {
             self.csr.mip |= 1 << 11;
         } else {
             self.csr.mip &= !(1 << 11);
         }
 
+        // Global interrupt enable check (mstatus.MIE, bit 3)
         let mstatus_mie = (self.csr.mstatus & (1 << 3)) != 0;
         if !mstatus_mie {
             return None;
@@ -78,43 +78,65 @@ impl Cpu {
         self.csr.mepc = epc;
         self.csr.mcause = cause;
 
-        // Save MIE to MPIE (bit 3 -> bit 7)
+        // Save MIE (bit 3) into MPIE (bit 7)
         let mie = (self.csr.mstatus >> 3) & 1;
         self.csr.mstatus = (self.csr.mstatus & !(1 << 7)) | (mie << 7);
 
-        // Clear MIE (disable interrupts)
+        // Clear MIE to disable nested interrupts
         self.csr.mstatus &= !(1 << 3);
 
-        // Jump to mtvec (handling direct mode)
-        let base_vector = self.csr.mtvec & !0x3;
-        self.pc = base_vector;
+        let mode = self.csr.mtvec & 0x3;
+        let base = self.csr.mtvec & !0x3;
+        let is_interrupt = (cause & 0x8000_0000) != 0;
+
+        // Support both Direct (mode 0) and Vectored (mode 1)
+        if mode == 1 && is_interrupt {
+            let cause_num = cause & 0x7FFF_FFFF;
+            self.pc = base.wrapping_add(cause_num * 4);
+        } else {
+            self.pc = base;
+        }
     }
 
     pub fn step(&mut self) {
-        // 1. Tick timers
+        // Check if UART received a byte and assert line 1 on the PLIC
+        if (self.bus.uart.read_u8(0x05) & 0x01) != 0 {
+            if self.bus.plic.claimed != 1 {
+                self.bus.plic.set_interrupt_pending(1);
+            }
+        } else {
+            // Clear pending line if UART FIFO is empty
+            self.bus.plic.pending &= !(1 << 1);
+        }
+        // 1. Tick hardware timers and cycle counter
         self.bus.clint.tick();
-        self.csr.cycle += 1;
+        self.csr.cycle = self.csr.cycle.wrapping_add(1);
 
-        // 2. Check for pending interrupts before executing
+        // 2. Evaluate interrupt conditions
         if let Some(cause) = self.check_interrupts() {
             self.handle_trap(cause, self.pc);
             return;
         }
 
-        // 3. Fetch
+        // 3. Fetch instruction
         let raw = self.bus.read_u32(self.pc);
         let inst = Instruction(raw);
         let mut next_pc = self.pc.wrapping_add(4);
 
+        // 4. Decode & Execute
         match inst.opcode() {
-            0x0F => {} // FENCE
+            // --- FENCE / FENCE.I ---
+            0x0F => {
+                // In single-threaded basic emulation, memory is sequentially consistent
+            }
 
+            // --- SYSTEM / CSR (0x73) ---
             0x73 => {
-                // SYSTEM / CSR
                 let funct3 = inst.funct3();
                 let csr_addr = (raw >> 20) as u16;
 
                 match funct3 {
+                    // System calls and returns (funct3 == 0)
                     0x0 => {
                         let funct12 = (raw >> 20) & 0xFFF;
                         match funct12 {
@@ -129,116 +151,142 @@ impl Cpu {
                                 return;
                             }
                             0x302 => {
-                                // MRET
-                                // Restore MIE from MPIE
+                                // MRET: Return from machine mode trap
                                 let mpie = (self.csr.mstatus >> 7) & 1;
                                 self.csr.mstatus = (self.csr.mstatus & !(1 << 3)) | (mpie << 3);
                                 self.csr.mstatus |= 1 << 7; // Set MPIE = 1
                                 next_pc = self.csr.mepc;
                             }
-                            0x105 => {} // WFI
-                            _ => unimplemented!("System funct12: {:#x}", funct12),
+                            0x105 => {
+                                // WFI (Wait For Interrupt) - no-op in single step
+                            }
+                            _ => unimplemented!("Unsupported system funct12: {:#x}", funct12),
                         }
                     }
+
+                    // Register-based CSR operations
                     0x1 | 0x2 | 0x3 => {
                         let t = self.csr.read(csr_addr);
                         let src = self.read_reg(inst.rs1());
-                        let new_val = match funct3 {
-                            0x1 => src,
-                            0x2 => t | src,
-                            0x3 => t & (!src),
-                            _ => unreachable!(),
-                        };
-                        self.csr.write(csr_addr, new_val);
+
+                        // Do not write if rs1 == 0 for CSRRS/CSRRC (pure read)
+                        if funct3 == 0x1 || inst.rs1() != 0 {
+                            let new_val = match funct3 {
+                                0x1 => src,        // CSRRW
+                                0x2 => t | src,    // CSRRS
+                                0x3 => t & (!src), // CSRRC
+                                _ => unreachable!(),
+                            };
+                            self.csr.write(csr_addr, new_val);
+                        }
                         self.write_reg(inst.rd(), t);
                     }
+
+                    // Immediate-based CSR operations
                     0x5 | 0x6 | 0x7 => {
                         let t = self.csr.read(csr_addr);
                         let zimm = inst.rs1() as u32;
-                        let new_val = match funct3 {
-                            0x5 => zimm,
-                            0x6 => t | zimm,
-                            0x7 => t & (!zimm),
-                            _ => unreachable!(),
-                        };
-                        self.csr.write(csr_addr, new_val);
+
+                        // Do not write if zimm == 0 for CSRRSI/CSRRCI (pure read)
+                        if funct3 == 0x5 || zimm != 0 {
+                            let new_val = match funct3 {
+                                0x5 => zimm,        // CSRRWI
+                                0x6 => t | zimm,    // CSRRSI
+                                0x7 => t & (!zimm), // CSRRCI
+                                _ => unreachable!(),
+                            };
+                            self.csr.write(csr_addr, new_val);
+                        }
                         self.write_reg(inst.rd(), t);
                     }
-                    _ => unimplemented!("System funct3: {:#x}", funct3),
+
+                    _ => unimplemented!("Unsupported System funct3: {:#x}", funct3),
                 }
             }
 
-            // ... (keep LUI 0x37, AUIPC 0x17, OP-IMM 0x13, R-type/M 0x33, BRANCH 0x63, JAL 0x6F, JALR 0x67, LOAD 0x03, STORE 0x23)
-            0x37 => self.write_reg(inst.rd(), inst.imm_u()),
+            // --- LUI (Load Upper Immediate) ---
+            0x37 => {
+                self.write_reg(inst.rd(), inst.imm_u());
+            }
+
+            // --- AUIPC (Add Upper Immediate to PC) ---
             0x17 => {
                 let val = self.pc.wrapping_add(inst.imm_u());
                 self.write_reg(inst.rd(), val);
             }
+
+            // --- OP-IMM (ADDI, SLTI, SLTIU, XORI, ORI, ANDI, SLLI, SRLI, SRAI) ---
             0x13 => {
                 let src = self.read_reg(inst.rs1());
                 let imm = inst.imm_i();
                 let res = match inst.funct3() {
-                    0x0 => src.wrapping_add(imm),
+                    0x0 => src.wrapping_add(imm), // ADDI
                     0x2 => {
                         if (src as i32) < (imm as i32) {
                             1
                         } else {
                             0
                         }
-                    }
+                    } // SLTI
                     0x3 => {
                         if src < imm {
                             1
                         } else {
                             0
                         }
-                    }
-                    0x4 => src ^ imm,
-                    0x6 => src | imm,
-                    0x7 => src & imm,
-                    0x1 => src << (imm & 0x1F),
+                    } // SLTIU
+                    0x4 => src ^ imm,             // XORI
+                    0x6 => src | imm,             // ORI
+                    0x7 => src & imm,             // ANDI
+                    0x1 => src << (imm & 0x1F),   // SLLI
                     0x5 => {
                         if (inst.funct7() & 0x20) != 0 {
-                            ((src as i32) >> (imm & 0x1F)) as u32
+                            ((src as i32) >> (imm & 0x1F)) as u32 // SRAI
                         } else {
-                            src >> (imm & 0x1F)
+                            src >> (imm & 0x1F) // SRLI
                         }
                     }
                     _ => unreachable!(),
                 };
                 self.write_reg(inst.rd(), res);
             }
+
+            // --- R-Type & RV32M Extension ---
             0x33 => {
                 let s1 = self.read_reg(inst.rs1());
                 let s2 = self.read_reg(inst.rs2());
                 let res = match (inst.funct7(), inst.funct3()) {
-                    (0x00, 0x0) => s1.wrapping_add(s2),
-                    (0x20, 0x0) => s1.wrapping_sub(s2),
-                    (0x00, 0x1) => s1 << (s2 & 0x1F),
+                    // Base RV32I
+                    (0x00, 0x0) => s1.wrapping_add(s2), // ADD
+                    (0x20, 0x0) => s1.wrapping_sub(s2), // SUB
+                    (0x00, 0x1) => s1 << (s2 & 0x1F),   // SLL
                     (0x00, 0x2) => {
                         if (s1 as i32) < (s2 as i32) {
                             1
                         } else {
                             0
                         }
-                    }
+                    } // SLT
                     (0x00, 0x3) => {
                         if s1 < s2 {
                             1
                         } else {
                             0
                         }
-                    }
-                    (0x00, 0x4) => s1 ^ s2,
-                    (0x00, 0x5) => s1 >> (s2 & 0x1F),
-                    (0x20, 0x5) => ((s1 as i32) >> (s2 & 0x1F)) as u32,
-                    (0x00, 0x6) => s1 | s2,
-                    (0x00, 0x7) => s1 & s2,
-                    (0x01, 0x0) => s1.wrapping_mul(s2),
-                    (0x01, 0x1) => ((s1 as i32 as i64).wrapping_mul(s2 as i32 as i64) >> 32) as u32,
-                    (0x01, 0x2) => ((s1 as i32 as i64).wrapping_mul(s2 as u64 as i64) >> 32) as u32,
-                    (0x01, 0x3) => ((s1 as u64).wrapping_mul(s2 as u64) >> 32) as u32,
+                    } // SLTU
+                    (0x00, 0x4) => s1 ^ s2,             // XOR
+                    (0x00, 0x5) => s1 >> (s2 & 0x1F),   // SRL
+                    (0x20, 0x5) => ((s1 as i32) >> (s2 & 0x1F)) as u32, // SRA
+                    (0x00, 0x6) => s1 | s2,             // OR
+                    (0x00, 0x7) => s1 & s2,             // AND
+
+                    // RV32M Extension (funct7 == 0x01)
+                    (0x01, 0x0) => s1.wrapping_mul(s2), // MUL
+                    (0x01, 0x1) => ((s1 as i32 as i64).wrapping_mul(s2 as i32 as i64) >> 32) as u32, // MULH
+                    (0x01, 0x2) => ((s1 as i32 as i64).wrapping_mul(s2 as u64 as i64) >> 32) as u32, // MULHSU
+                    (0x01, 0x3) => ((s1 as u64).wrapping_mul(s2 as u64) >> 32) as u32, // MULHU
                     (0x01, 0x4) => {
+                        // DIV
                         let a = s1 as i32;
                         let b = s2 as i32;
                         if b == 0 {
@@ -250,13 +298,11 @@ impl Cpu {
                         }
                     }
                     (0x01, 0x5) => {
-                        if s2 == 0 {
-                            0xFFFF_FFFF
-                        } else {
-                            s1 / s2
-                        }
+                        // DIVU
+                        if s2 == 0 { 0xFFFF_FFFF } else { s1 / s2 }
                     }
                     (0x01, 0x6) => {
+                        // REM
                         let a = s1 as i32;
                         let b = s2 as i32;
                         if b == 0 {
@@ -268,53 +314,60 @@ impl Cpu {
                         }
                     }
                     (0x01, 0x7) => {
-                        if s2 == 0 {
-                            s1
-                        } else {
-                            s1 % s2
-                        }
+                        // REMU
+                        if s2 == 0 { s1 } else { s1 % s2 }
                     }
                     _ => unimplemented!("Unsupported R/M type: {inst:?}"),
                 };
                 self.write_reg(inst.rd(), res);
             }
+
+            // --- JAL (Jump and Link) ---
             0x6F => {
                 self.write_reg(inst.rd(), self.pc.wrapping_add(4));
                 next_pc = self.pc.wrapping_add(inst.imm_j());
             }
+
+            // --- JALR (Jump and Link Register) ---
             0x67 => {
                 let target = self.read_reg(inst.rs1()).wrapping_add(inst.imm_i()) & !1;
                 self.write_reg(inst.rd(), self.pc.wrapping_add(4));
                 next_pc = target;
             }
+
+            // --- BRANCH (BEQ, BNE, BLT, BGE, BLTU, BGEU) ---
             0x63 => {
                 let s1 = self.read_reg(inst.rs1());
                 let s2 = self.read_reg(inst.rs2());
                 let taken = match inst.funct3() {
-                    0x0 => s1 == s2,
-                    0x1 => s1 != s2,
-                    0x4 => (s1 as i32) < (s2 as i32),
-                    0x5 => (s1 as i32) >= (s2 as i32),
-                    0x6 => s1 < s2,
-                    0x7 => s1 >= s2,
+                    0x0 => s1 == s2,                   // BEQ
+                    0x1 => s1 != s2,                   // BNE
+                    0x4 => (s1 as i32) < (s2 as i32),  // BLT
+                    0x5 => (s1 as i32) >= (s2 as i32), // BGE
+                    0x6 => s1 < s2,                    // BLTU
+                    0x7 => s1 >= s2,                   // BGEU
                     _ => unreachable!(),
                 };
                 if taken {
                     next_pc = self.pc.wrapping_add(inst.imm_b());
                 }
             }
+
+            // --- LOAD (LB, LH, LW, LBU, LHU) ---
             0x03 => {
                 let addr = self.read_reg(inst.rs1()).wrapping_add(inst.imm_i());
                 let val = match inst.funct3() {
-                    0x0 => (self.bus.read_u8(addr) as i8 as i32) as u32,
-                    0x1 => (self.bus.read_u16(addr) as i16 as i32) as u32,
-                    0x2 => self.bus.read_u32(addr),
-                    0x4 => self.bus.read_u8(addr) as u32,
-                    0x5 => self.bus.read_u16(addr) as u32,
-                    _ => unimplemented!("Unsupported LOAD funct3"),
+                    0x0 => (self.bus.read_u8(addr) as i8 as i32) as u32, // LB
+                    0x1 => (self.bus.read_u16(addr) as i16 as i32) as u32, // LH
+                    0x2 => self.bus.read_u32(addr),                      // LW
+                    0x4 => self.bus.read_u8(addr) as u32,                // LBU
+                    0x5 => self.bus.read_u16(addr) as u32,               // LHU
+                    _ => unimplemented!("Unsupported LOAD funct3: {:#x}", inst.funct3()),
                 };
                 self.write_reg(inst.rd(), val);
             }
+
+            // --- STORE (SB, SH, SW) ---
             0x23 => {
                 let addr = self.read_reg(inst.rs1()).wrapping_add(inst.imm_s());
                 let val = self.read_reg(inst.rs2());
@@ -322,11 +375,15 @@ impl Cpu {
                     0x0 => self.bus.write_u8(addr, val as u8),
                     0x1 => self.bus.write_u16(addr, val as u16),
                     0x2 => self.bus.write_u32(addr, val),
-                    _ => unimplemented!("Unsupported STORE funct3"),
+                    _ => unimplemented!("Unsupported STORE funct3: {:#x}", inst.funct3()),
                 }
             }
 
-            _ => unimplemented!("Opcode {:#x} not implemented", inst.opcode()),
+            _ => unimplemented!(
+                "Opcode {:#x} not implemented at PC {:#x}",
+                inst.opcode(),
+                self.pc
+            ),
         }
 
         self.pc = next_pc;

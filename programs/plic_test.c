@@ -1,4 +1,8 @@
+// programs/plic_test.c
+
+#define UART_RHR            (*((volatile unsigned char *)0x10000000))
 #define UART_THR            (*((volatile unsigned char *)0x10000000))
+#define UART_LSR            (*((volatile unsigned char *)0x10000005))
 #define PLIC_PRIORITY_1     (*((volatile unsigned int *)0x0C000004))
 #define PLIC_ENABLE         (*((volatile unsigned int *)0x0C002000))
 #define PLIC_THRESHOLD      (*((volatile unsigned int *)0x0C200000))
@@ -6,10 +10,15 @@
 
 static volatile int plic_handled = 0;
 
+void uart_putc(char c) {
+    while ((UART_LSR & 0x20) == 0);
+    UART_THR = c;
+}
+
 void uart_puts(const char *s) {
     while (*s) {
-        if (*s == '\n') UART_THR = '\r';
-        UART_THR = *s++;
+        if (*s == '\n') uart_putc('\r');
+        uart_putc(*s++);
     }
 }
 
@@ -22,18 +31,24 @@ void trap_handler(void) {
         unsigned int irq = PLIC_CLAIM_COMPLETE;
         
         if (irq == 1) {
-            uart_puts("[PLIC] Serviced External Interrupt Source 1!\n");
+            // 1. Read byte to clear the UART hardware buffer!
+            char c = UART_RHR;
+
+            uart_puts("\r\n[PLIC] Received character: '");
+            uart_putc(c);
+            uart_puts("'\r\n");
+
             plic_handled = 1;
         }
 
-        // Signal completion to PLIC
+        // 2. Signal completion to PLIC
         PLIC_CLAIM_COMPLETE = irq;
     }
 }
 
 __attribute__((section(".text.entry")))
 void _start(void) {
-    uart_puts("Configuring PLIC...\n");
+    uart_puts("\r\nConfiguring PLIC Interrupts...\n");
 
     // 1. Set trap handler
     __asm__ volatile("csrw mtvec, %0" :: "r"((unsigned int)trap_handler));
@@ -50,15 +65,12 @@ void _start(void) {
     // 4. Enable Global Interrupts (MIE, bit 3)
     __asm__ volatile("csrsi mstatus, 0x08");
 
-    uart_puts("Triggering interrupt source 1...\n");
-
-    // Simulate peripheral raising interrupt line 1 (by writing to PLIC pending bit in emulator)
-    *((volatile unsigned int *)0x0C001000) = (1 << 1);
+    uart_puts("Press any key to trigger UART PLIC interrupt...\n");
 
     while (!plic_handled) {
-        // Wait for interrupt handler
+        __asm__ volatile("wfi"); // Sleep until interrupt fires
     }
 
-    uart_puts("PLIC Test Passed Successfully!\n");
+    uart_puts("Successfully handled UART PLIC interrupt!\n");
     while (1);
 }
