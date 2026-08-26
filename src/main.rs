@@ -5,6 +5,7 @@ mod plic;
 mod uart;
 mod gpio;
 mod i2s;
+mod i2c;
 mod spi;
 mod timer;
 

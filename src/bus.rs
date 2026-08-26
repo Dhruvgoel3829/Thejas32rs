@@ -1,12 +1,13 @@
-use std::fs;
-use goblin::elf::Elf;
+use crate::clint::{CLINT_BASE, Clint};
+use crate::gpio::{GPIO_BASE, Gpio};
+use crate::i2c::{I2C_BASE, I2c};
+use crate::i2s::{I2S_BASE, I2s};
+use crate::plic::{PLIC_BASE, Plic};
+use crate::spi::{SPI_BASE, Spi};
+use crate::timer::{TIMER_BASE, Timer};
 use crate::uart::Uart;
-use crate::clint::{Clint, CLINT_BASE};
-use crate::plic::{Plic, PLIC_BASE};
-use crate::gpio::{Gpio, GPIO_BASE};
-use crate::timer::{Timer, TIMER_BASE};
-use crate::spi::{Spi, SPI_BASE};
-use crate::i2s::{I2s, I2S_BASE};
+use goblin::elf::Elf;
+use std::fs;
 
 pub const RAM_BASE: u32 = 0x8000_0000;
 pub const RAM_SIZE: usize = 512 * 1024;
@@ -20,6 +21,7 @@ pub struct Bus {
     pub timer: Timer,
     pub spi: Spi,
     pub i2s: I2s,
+    pub i2c: I2c,
 }
 
 impl Bus {
@@ -33,6 +35,7 @@ impl Bus {
             timer: Timer::new(),
             spi: Spi::new(),
             i2s: I2s::new(),
+            i2c: I2c::new(),
         }
     }
 
@@ -96,6 +99,11 @@ impl Bus {
                 let shift = (offset & 0x3) * 8;
                 ((self.i2s.read_u32(offset & !0x3) >> shift) & 0xFF) as u8
             }
+            0x1005_0000..=0x1005_0FFF => {
+                let offset = addr - I2C_BASE;
+                let shift = (offset & 0x3) * 8;
+                ((self.i2c.read_u32(offset & !0x3) >> shift) & 0xFF) as u8
+            }
             _ => 0,
         }
     }
@@ -148,6 +156,14 @@ impl Bus {
                 current = (current & !(0xFF << shift)) | ((val as u32) << shift);
                 self.i2s.write_u32(word_offset, current);
             }
+            0x1005_0000..=0x1005_0FFF => {
+                let offset = addr - I2C_BASE;
+                let word_offset = offset & !0x3;
+                let mut current = self.i2c.read_u32(word_offset);
+                let shift = (offset & 0x3) * 8;
+                current = (current & !(0xFF << shift)) | ((val as u32) << shift);
+                self.i2c.write_u32(word_offset, current);
+            }
             _ => {}
         }
     }
@@ -166,6 +182,8 @@ impl Bus {
                 0x1002_0000..=0x1002_0FFF => return self.timer.read_u32(addr - TIMER_BASE),
                 0x1003_0000..=0x1003_0FFF => return self.spi.read_u32(addr - SPI_BASE),
                 0x1004_0000..=0x1004_0FFF => return self.i2s.read_u32(addr - I2S_BASE),
+                0x1005_0000..=0x1005_0FFF => return self.i2c.read_u32(addr - I2C_BASE),
+
                 _ => {}
             }
         }
@@ -185,11 +203,30 @@ impl Bus {
     pub fn write_u32(&mut self, addr: u32, val: u32) {
         if addr % 4 == 0 {
             match addr {
-                0x0C00_0000..=0x0C3F_FFFF => { self.plic.write_u32(addr - PLIC_BASE, val); return; }
-                0x1001_0000..=0x1001_0FFF => { self.gpio.write_u32(addr - GPIO_BASE, val); return; }
-                0x1002_0000..=0x1002_0FFF => { self.timer.write_u32(addr - TIMER_BASE, val); return; }
-                0x1003_0000..=0x1003_0FFF => { self.spi.write_u32(addr - SPI_BASE, val); return; }
-                0x1004_0000..=0x1004_0FFF => { self.i2s.write_u32(addr - I2S_BASE, val); return; }
+                0x0C00_0000..=0x0C3F_FFFF => {
+                    self.plic.write_u32(addr - PLIC_BASE, val);
+                    return;
+                }
+                0x1001_0000..=0x1001_0FFF => {
+                    self.gpio.write_u32(addr - GPIO_BASE, val);
+                    return;
+                }
+                0x1002_0000..=0x1002_0FFF => {
+                    self.timer.write_u32(addr - TIMER_BASE, val);
+                    return;
+                }
+                0x1003_0000..=0x1003_0FFF => {
+                    self.spi.write_u32(addr - SPI_BASE, val);
+                    return;
+                }
+                0x1004_0000..=0x1004_0FFF => {
+                    self.i2s.write_u32(addr - I2S_BASE, val);
+                    return;
+                }
+                0x1005_0000..=0x1005_0FFF => {
+                    self.i2c.write_u32(addr - I2C_BASE, val);
+                    return;
+                }
                 _ => {}
             }
         }
