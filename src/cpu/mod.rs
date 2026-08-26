@@ -11,6 +11,7 @@ pub struct Cpu {
     pub pc: u32,
     pub csr: Csr,
     pub bus: Bus,
+    pub atomic_reservation: Option<u32>, // Holds reserved physical memory address
 }
 
 const REG_NAMES: [&str; 32] = [
@@ -26,6 +27,7 @@ impl Cpu {
             pc: entry_point,
             csr: Csr::new(),
             bus,
+            atomic_reservation: None,
         }
     }
 
@@ -118,6 +120,7 @@ impl Cpu {
         } else {
             self.pc = base;
         }
+        self.atomic_reservation = None;
     }
 
     pub fn step(&mut self, trace: bool) {
@@ -422,6 +425,119 @@ impl Cpu {
                     0x1 => self.bus.write_u16(addr, val as u16),
                     0x2 => self.bus.write_u32(addr, val),
                     _ => unimplemented!("Unsupported STORE funct3: {:#x}", inst.funct3()),
+                }
+                self.atomic_reservation = None;
+            }
+
+            // --- RV32A Atomic Extension (Opcode 0x2F) ---
+            0x2F => {
+                let addr = self.read_reg(inst.rs1());
+                let src2 = self.read_reg(inst.rs2());
+                let funct5 = inst.funct5();
+
+                match funct5 {
+                    // LR.W (Load-Reserved Word)
+                    0b00010 => {
+                        let val = self.bus.read_u32(addr);
+                        self.atomic_reservation = Some(addr);
+                        self.write_reg(inst.rd(), val);
+                    }
+
+                    // SC.W (Store-Conditional Word)
+                    0b00011 => {
+                        if self.atomic_reservation == Some(addr) {
+                            self.bus.write_u32(addr, src2);
+                            self.write_reg(inst.rd(), 0); // 0 = Success
+                            self.atomic_reservation = None;
+                        } else {
+                            self.write_reg(inst.rd(), 1); // 1 = Failure
+                        }
+                    }
+
+                    // AMOSWAP.W
+                    0b00001 => {
+                        let orig = self.bus.read_u32(addr);
+                        self.bus.write_u32(addr, src2);
+                        self.write_reg(inst.rd(), orig);
+                    }
+
+                    // AMOADD.W
+                    0b00000 => {
+                        let orig = self.bus.read_u32(addr);
+                        let res = orig.wrapping_add(src2);
+                        self.bus.write_u32(addr, res);
+                        self.write_reg(inst.rd(), orig);
+                    }
+
+                    // AMOXOR.W
+                    0b00100 => {
+                        let orig = self.bus.read_u32(addr);
+                        let res = orig ^ src2;
+                        self.bus.write_u32(addr, res);
+                        self.write_reg(inst.rd(), orig);
+                    }
+
+                    // AMOAND.W
+                    0b01100 => {
+                        let orig = self.bus.read_u32(addr);
+                        let res = orig & src2;
+                        self.bus.write_u32(addr, res);
+                        self.write_reg(inst.rd(), orig);
+                    }
+
+                    // AMOOR.W
+                    0b01000 => {
+                        let orig = self.bus.read_u32(addr);
+                        let res = orig | src2;
+                        self.bus.write_u32(addr, res);
+                        self.write_reg(inst.rd(), orig);
+                    }
+
+                    // AMOMIN.W (Signed Minimum)
+                    0b10000 => {
+                        let orig = self.bus.read_u32(addr);
+                        let res = if (orig as i32) < (src2 as i32) {
+                            orig
+                        } else {
+                            src2
+                        };
+                        self.bus.write_u32(addr, res);
+                        self.write_reg(inst.rd(), orig);
+                    }
+
+                    // AMOMAX.W (Signed Maximum)
+                    0b10100 => {
+                        let orig = self.bus.read_u32(addr);
+                        let res = if (orig as i32) > (src2 as i32) {
+                            orig
+                        } else {
+                            src2
+                        };
+                        self.bus.write_u32(addr, res);
+                        self.write_reg(inst.rd(), orig);
+                    }
+
+                    // AMOMINU.W (Unsigned Minimum)
+                    0b11000 => {
+                        let orig = self.bus.read_u32(addr);
+                        let res = if orig < src2 { orig } else { src2 };
+                        self.bus.write_u32(addr, res);
+                        self.write_reg(inst.rd(), orig);
+                    }
+
+                    // AMOMAXU.W (Unsigned Maximum)
+                    0b11100 => {
+                        let orig = self.bus.read_u32(addr);
+                        let res = if orig > src2 { orig } else { src2 };
+                        self.bus.write_u32(addr, res);
+                        self.write_reg(inst.rd(), orig);
+                    }
+
+                    _ => unimplemented!(
+                        "Unsupported RV32A funct5: {:#b} at PC {:#x}",
+                        funct5,
+                        self.pc
+                    ),
                 }
             }
 

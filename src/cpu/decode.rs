@@ -1,25 +1,41 @@
-
 #[derive(Debug, Clone, Copy)]
 pub struct Instruction(pub u32);
 
 impl Instruction {
     #[inline(always)]
-    pub fn opcode(&self) -> u32 { self.0 & 0x7F }
-    
+    pub fn opcode(&self) -> u32 {
+        self.0 & 0x7F
+    }
+
     #[inline(always)]
-    pub fn rd(&self) -> usize { ((self.0 >> 7) & 0x1F) as usize }
-    
+    pub fn rd(&self) -> usize {
+        ((self.0 >> 7) & 0x1F) as usize
+    }
+
     #[inline(always)]
-    pub fn funct3(&self) -> u32 { (self.0 >> 12) & 0x07 }
-    
+    pub fn funct3(&self) -> u32 {
+        (self.0 >> 12) & 0x07
+    }
+
     #[inline(always)]
-    pub fn rs1(&self) -> usize { ((self.0 >> 15) & 0x1F) as usize }
-    
+    pub fn rs1(&self) -> usize {
+        ((self.0 >> 15) & 0x1F) as usize
+    }
+
     #[inline(always)]
-    pub fn rs2(&self) -> usize { ((self.0 >> 20) & 0x1F) as usize }
-    
+    pub fn rs2(&self) -> usize {
+        ((self.0 >> 20) & 0x1F) as usize
+    }
+
     #[inline(always)]
-    pub fn funct7(&self) -> u32 { (self.0 >> 25) & 0x7F }
+    pub fn funct7(&self) -> u32 {
+        (self.0 >> 25) & 0x7F
+    }
+
+    #[inline(always)]
+    pub fn funct5(&self) -> u32 {
+        (self.0 >> 27) & 0x1F
+    }
 
     // I-Type Immediate (Sign-Extended 12-bit)
     pub fn imm_i(&self) -> u32 {
@@ -93,7 +109,13 @@ impl Instruction {
                 0x6 => "ori",
                 0x7 => "andi",
                 0x1 => "slli",
-                0x5 => if (self.funct7() & 0x20) != 0 { "srai" } else { "srli" },
+                0x5 => {
+                    if (self.funct7() & 0x20) != 0 {
+                        "srai"
+                    } else {
+                        "srli"
+                    }
+                }
                 _ => "op_imm_unknown",
             },
             0x33 => match (self.funct7(), self.funct3()) {
@@ -133,6 +155,21 @@ impl Instruction {
                 0x6 => "csrrsi",
                 0x7 => "csrrci",
                 _ => "csr_unknown",
+            },
+
+            0x2F => match self.funct5() {
+                0b00010 => "lr.w",
+                0b00011 => "sc.w",
+                0b00001 => "amoswap.w",
+                0b00000 => "amoadd.w",
+                0b00100 => "amoxor.w",
+                0b01100 => "amoand.w",
+                0b01000 => "amoor.w",
+                0b10000 => "amomin.w",
+                0b10100 => "amomax.w",
+                0b11000 => "amominu.w",
+                0b11100 => "amomaxu.w",
+                _ => "amo_unknown",
             },
             _ => "unknown",
         }
