@@ -3,6 +3,11 @@ mod clint;
 mod cpu;
 mod plic;
 mod uart;
+mod gpio;
+mod i2s;
+mod spi;
+mod timer;
+
 
 use bus::Bus;
 use clap::Parser;

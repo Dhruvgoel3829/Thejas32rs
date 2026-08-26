@@ -122,13 +122,18 @@ impl Cpu {
 
     pub fn step(&mut self, trace: bool) {
         // Check if UART received a byte and assert line 1 on the PLIC
+        // UART RX line -> PLIC Source 1
         if (self.bus.uart.read_u8(0x05) & 0x01) != 0 {
             if self.bus.plic.claimed != 1 {
                 self.bus.plic.set_interrupt_pending(1);
             }
         } else {
-            // Clear pending line if UART FIFO is empty
             self.bus.plic.pending &= !(1 << 1);
+        }
+
+        // Peripheral Timer -> PLIC Source 2
+        if self.bus.timer.tick() {
+            self.bus.plic.set_interrupt_pending(2);
         }
 
         // 1. Tick hardware timers and cycle counter

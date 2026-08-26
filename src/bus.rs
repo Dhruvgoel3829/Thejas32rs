@@ -1,8 +1,12 @@
-use crate::clint::{CLINT_BASE, Clint};
-use crate::plic::{PLIC_BASE, Plic};
-use crate::uart::Uart;
-use goblin::elf::Elf;
 use std::fs;
+use goblin::elf::Elf;
+use crate::uart::Uart;
+use crate::clint::{Clint, CLINT_BASE};
+use crate::plic::{Plic, PLIC_BASE};
+use crate::gpio::{Gpio, GPIO_BASE};
+use crate::timer::{Timer, TIMER_BASE};
+use crate::spi::{Spi, SPI_BASE};
+use crate::i2s::{I2s, I2S_BASE};
 
 pub const RAM_BASE: u32 = 0x8000_0000;
 pub const RAM_SIZE: usize = 512 * 1024;
@@ -12,6 +16,10 @@ pub struct Bus {
     pub uart: Uart,
     pub clint: Clint,
     pub plic: Plic,
+    pub gpio: Gpio,
+    pub timer: Timer,
+    pub spi: Spi,
+    pub i2s: I2s,
 }
 
 impl Bus {
@@ -21,6 +29,10 @@ impl Bus {
             uart: Uart::new(),
             clint: Clint::new(),
             plic: Plic::new(),
+            gpio: Gpio::new(),
+            timer: Timer::new(),
+            spi: Spi::new(),
+            i2s: I2s::new(),
         }
     }
 
@@ -56,16 +68,33 @@ impl Bus {
                 let offset = (addr - RAM_BASE) as usize;
                 self.ram[offset]
             }
-            0x1000_0000..=0x1000_00FF => {
-                let val = self.uart.read_u8(addr - 0x1000_0000);
-                val
-            }
+            0x1000_0000..=0x1000_00FF => self.uart.read_u8(addr - 0x1000_0000),
             0x0200_0000..=0x0200_FFFF => self.clint.read_u8(addr - CLINT_BASE),
             0x0C00_0000..=0x0C3F_FFFF => {
                 let offset = addr - PLIC_BASE;
                 let word_offset = offset & !0x3;
                 let shift = (offset & 0x3) * 8;
                 ((self.plic.read_u32(word_offset) >> shift) & 0xFF) as u8
+            }
+            0x1001_0000..=0x1001_0FFF => {
+                let offset = addr - GPIO_BASE;
+                let shift = (offset & 0x3) * 8;
+                ((self.gpio.read_u32(offset & !0x3) >> shift) & 0xFF) as u8
+            }
+            0x1002_0000..=0x1002_0FFF => {
+                let offset = addr - TIMER_BASE;
+                let shift = (offset & 0x3) * 8;
+                ((self.timer.read_u32(offset & !0x3) >> shift) & 0xFF) as u8
+            }
+            0x1003_0000..=0x1003_0FFF => {
+                let offset = addr - SPI_BASE;
+                let shift = (offset & 0x3) * 8;
+                ((self.spi.read_u32(offset & !0x3) >> shift) & 0xFF) as u8
+            }
+            0x1004_0000..=0x1004_0FFF => {
+                let offset = addr - I2S_BASE;
+                let shift = (offset & 0x3) * 8;
+                ((self.i2s.read_u32(offset & !0x3) >> shift) & 0xFF) as u8
             }
             _ => 0,
         }
@@ -87,6 +116,38 @@ impl Bus {
                 current = (current & !(0xFF << shift)) | ((val as u32) << shift);
                 self.plic.write_u32(word_offset, current);
             }
+            0x1001_0000..=0x1001_0FFF => {
+                let offset = addr - GPIO_BASE;
+                let word_offset = offset & !0x3;
+                let mut current = self.gpio.read_u32(word_offset);
+                let shift = (offset & 0x3) * 8;
+                current = (current & !(0xFF << shift)) | ((val as u32) << shift);
+                self.gpio.write_u32(word_offset, current);
+            }
+            0x1002_0000..=0x1002_0FFF => {
+                let offset = addr - TIMER_BASE;
+                let word_offset = offset & !0x3;
+                let mut current = self.timer.read_u32(word_offset);
+                let shift = (offset & 0x3) * 8;
+                current = (current & !(0xFF << shift)) | ((val as u32) << shift);
+                self.timer.write_u32(word_offset, current);
+            }
+            0x1003_0000..=0x1003_0FFF => {
+                let offset = addr - SPI_BASE;
+                let word_offset = offset & !0x3;
+                let mut current = self.spi.read_u32(word_offset);
+                let shift = (offset & 0x3) * 8;
+                current = (current & !(0xFF << shift)) | ((val as u32) << shift);
+                self.spi.write_u32(word_offset, current);
+            }
+            0x1004_0000..=0x1004_0FFF => {
+                let offset = addr - I2S_BASE;
+                let word_offset = offset & !0x3;
+                let mut current = self.i2s.read_u32(word_offset);
+                let shift = (offset & 0x3) * 8;
+                current = (current & !(0xFF << shift)) | ((val as u32) << shift);
+                self.i2s.write_u32(word_offset, current);
+            }
             _ => {}
         }
     }
@@ -98,8 +159,15 @@ impl Bus {
     }
 
     pub fn read_u32(&mut self, addr: u32) -> u32 {
-        if (0x0C00_0000..=0x0C3F_FFFF).contains(&addr) && (addr % 4 == 0) {
-            return self.plic.read_u32(addr - PLIC_BASE);
+        if addr % 4 == 0 {
+            match addr {
+                0x0C00_0000..=0x0C3F_FFFF => return self.plic.read_u32(addr - PLIC_BASE),
+                0x1001_0000..=0x1001_0FFF => return self.gpio.read_u32(addr - GPIO_BASE),
+                0x1002_0000..=0x1002_0FFF => return self.timer.read_u32(addr - TIMER_BASE),
+                0x1003_0000..=0x1003_0FFF => return self.spi.read_u32(addr - SPI_BASE),
+                0x1004_0000..=0x1004_0FFF => return self.i2s.read_u32(addr - I2S_BASE),
+                _ => {}
+            }
         }
 
         let b0 = self.read_u8(addr) as u32;
@@ -115,9 +183,15 @@ impl Bus {
     }
 
     pub fn write_u32(&mut self, addr: u32, val: u32) {
-        if (0x0C00_0000..=0x0C3F_FFFF).contains(&addr) && (addr % 4 == 0) {
-            self.plic.write_u32(addr - PLIC_BASE, val);
-            return;
+        if addr % 4 == 0 {
+            match addr {
+                0x0C00_0000..=0x0C3F_FFFF => { self.plic.write_u32(addr - PLIC_BASE, val); return; }
+                0x1001_0000..=0x1001_0FFF => { self.gpio.write_u32(addr - GPIO_BASE, val); return; }
+                0x1002_0000..=0x1002_0FFF => { self.timer.write_u32(addr - TIMER_BASE, val); return; }
+                0x1003_0000..=0x1003_0FFF => { self.spi.write_u32(addr - SPI_BASE, val); return; }
+                0x1004_0000..=0x1004_0FFF => { self.i2s.write_u32(addr - I2S_BASE, val); return; }
+                _ => {}
+            }
         }
 
         self.write_u8(addr, val as u8);
