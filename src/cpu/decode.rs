@@ -55,4 +55,86 @@ impl Instruction {
         let imm10_1 = ((self.0 >> 21) & 0x3FF) << 1;
         imm20 | (imm19_12 << 12) | imm11 | imm10_1
     }
+
+    pub fn mnemonic(&self) -> &'static str {
+        match self.opcode() {
+            0x37 => "lui",
+            0x17 => "auipc",
+            0x6F => "jal",
+            0x67 => "jalr",
+            0x63 => match self.funct3() {
+                0x0 => "beq",
+                0x1 => "bne",
+                0x4 => "blt",
+                0x5 => "bge",
+                0x6 => "bltu",
+                0x7 => "bgeu",
+                _ => "branch_unknown",
+            },
+            0x03 => match self.funct3() {
+                0x0 => "lb",
+                0x1 => "lh",
+                0x2 => "lw",
+                0x4 => "lbu",
+                0x5 => "lhu",
+                _ => "load_unknown",
+            },
+            0x23 => match self.funct3() {
+                0x0 => "sb",
+                0x1 => "sh",
+                0x2 => "sw",
+                _ => "store_unknown",
+            },
+            0x13 => match self.funct3() {
+                0x0 => "addi",
+                0x2 => "slti",
+                0x3 => "sltiu",
+                0x4 => "xori",
+                0x6 => "ori",
+                0x7 => "andi",
+                0x1 => "slli",
+                0x5 => if (self.funct7() & 0x20) != 0 { "srai" } else { "srli" },
+                _ => "op_imm_unknown",
+            },
+            0x33 => match (self.funct7(), self.funct3()) {
+                (0x00, 0x0) => "add",
+                (0x20, 0x0) => "sub",
+                (0x00, 0x1) => "sll",
+                (0x00, 0x2) => "slt",
+                (0x00, 0x3) => "sltu",
+                (0x00, 0x4) => "xor",
+                (0x00, 0x5) => "srl",
+                (0x20, 0x5) => "sra",
+                (0x00, 0x6) => "or",
+                (0x00, 0x7) => "and",
+                (0x01, 0x0) => "mul",
+                (0x01, 0x1) => "mulh",
+                (0x01, 0x2) => "mulhsu",
+                (0x01, 0x3) => "mulhu",
+                (0x01, 0x4) => "div",
+                (0x01, 0x5) => "divu",
+                (0x01, 0x6) => "rem",
+                (0x01, 0x7) => "remu",
+                _ => "op_unknown",
+            },
+            0x0F => "fence",
+            0x73 => match self.funct3() {
+                0x0 => match (self.0 >> 20) & 0xFFF {
+                    0x000 => "ecall",
+                    0x001 => "ebreak",
+                    0x302 => "mret",
+                    0x105 => "wfi",
+                    _ => "sys_unknown",
+                },
+                0x1 => "csrrw",
+                0x2 => "csrrs",
+                0x3 => "csrrc",
+                0x5 => "csrrwi",
+                0x6 => "csrrsi",
+                0x7 => "csrrci",
+                _ => "csr_unknown",
+            },
+            _ => "unknown",
+        }
+    }
 }

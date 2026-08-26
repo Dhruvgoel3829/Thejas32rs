@@ -1,13 +1,36 @@
 mod bus;
 mod clint;
 mod cpu;
-mod uart;
 mod plic;
+mod uart;
 
 use bus::Bus;
+use clap::Parser;
 use cpu::Cpu;
-use std::env;
-use crossterm::terminal::{enable_raw_mode, disable_raw_mode};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
+
+#[derive(Parser, Debug)]
+#[command(name = "Thejas32rs")]
+#[command(author = "Dhruv Goel")]
+#[command(version = "0.1.0")]
+#[command(about = "Cycle-accurate RV32IM THEJAS32 SoC Emulator in Rust", long_about = None)]
+struct Cli {
+    /// Path to the RISC-V ELF binary
+    #[arg(value_name = "FILE")]
+    elf: String,
+
+    /// Print instruction trace disassembly and register state during execution
+    #[arg(short, long)]
+    trace: bool,
+
+    /// Dump registers on exit / crash
+    #[arg(short, long)]
+    dump_regs: bool,
+
+    /// Limit maximum execution cycles (0 for unlimited)
+    #[arg(short, long, default_value_t = 0)]
+    max_cycles: u64,
+}
 
 struct RawModeGuard;
 
@@ -24,31 +47,46 @@ impl Drop for RawModeGuard {
     }
 }
 
+// src/main.rs
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        eprintln!("Usage: cargo run -- <path-to-elf-file>");
-        return;
-    }
-
-    let elf_path = &args[1];
+    let cli = Cli::parse();
     let mut bus = Bus::new();
 
-    println!("[INFO] Loading ELF: {}", elf_path);
-    let entry_point = bus.load_elf(elf_path);
-    println!("[INFO] Entry point: {:#x}", entry_point);
+    eprintln!("[INFO] Loading ELF: {}", cli.elf);
+    let entry_point = bus.load_elf(&cli.elf);
+    eprintln!("[INFO] Entry point: 0x{:08x}", entry_point);
 
     let mut cpu = Cpu::new(bus, entry_point);
-    cpu.write_reg(2, 0x8007_0000); // Initialize Stack Pointer (sp)
+    cpu.write_reg(2, 0x8007_0000); // sp
 
-    // Activate raw terminal mode
-    let _raw_guard = RawModeGuard::enter();
+    let mut cycle_count: u64 = 0;
 
-    loop {
-        cpu.step();
+    // Run execution inside a scoped block so raw mode drops before final logs
+    {
+        let _raw_guard = RawModeGuard::enter();
 
-        if cpu.pc == 0 {
-            break;
+        loop {
+            cpu.step(cli.trace);
+            cycle_count += 1;
+
+            if cli.max_cycles > 0 && cycle_count >= cli.max_cycles {
+                break;
+            }
+
+            if cpu.pc == 0 {
+                break;
+            }
         }
+    } // <-- Raw mode is disabled here automatically!
+
+    if cli.max_cycles > 0 && cycle_count >= cli.max_cycles {
+        println!(
+            "\n[INFO] Reached max cycle limit ({} cycles)",
+            cli.max_cycles
+        );
+    }
+
+    if cli.dump_regs {
+        cpu.dump_registers();
     }
 }

@@ -13,6 +13,12 @@ pub struct Cpu {
     pub bus: Bus,
 }
 
+const REG_NAMES: [&str; 32] = [
+    "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2", "s0", "s1", "a0", "a1", "a2", "a3", "a4",
+    "a5", "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "t3", "t4",
+    "t5", "t6",
+];
+
 impl Cpu {
     pub fn new(bus: Bus, entry_point: u32) -> Self {
         Self {
@@ -33,6 +39,22 @@ impl Cpu {
         if reg != 0 {
             self.regs[reg] = val;
         }
+    }
+
+    // In src/cpu/mod.rs
+    pub fn dump_registers(&self) {
+        eprintln!("\r\n=== Register State (PC: 0x{:08x}) ===", self.pc);
+        for i in 0..32 {
+            eprint!("{:4}: 0x{:08x} ", REG_NAMES[i], self.regs[i]);
+            if (i + 1) % 4 == 0 {
+                eprint!("\r\n");
+            }
+        }
+        eprintln!(
+            "mstatus: 0x{:08x}  mepc: 0x{:08x}  mcause: 0x{:08x}\r",
+            self.csr.mstatus, self.csr.mepc, self.csr.mcause
+        );
+        eprintln!("=================================================\r");
     }
 
     fn check_interrupts(&mut self) -> Option<u32> {
@@ -98,7 +120,7 @@ impl Cpu {
         }
     }
 
-    pub fn step(&mut self) {
+    pub fn step(&mut self, trace: bool) {
         // Check if UART received a byte and assert line 1 on the PLIC
         if (self.bus.uart.read_u8(0x05) & 0x01) != 0 {
             if self.bus.plic.claimed != 1 {
@@ -108,12 +130,16 @@ impl Cpu {
             // Clear pending line if UART FIFO is empty
             self.bus.plic.pending &= !(1 << 1);
         }
+
         // 1. Tick hardware timers and cycle counter
         self.bus.clint.tick();
         self.csr.cycle = self.csr.cycle.wrapping_add(1);
 
         // 2. Evaluate interrupt conditions
         if let Some(cause) = self.check_interrupts() {
+            if trace {
+                eprintln!("[TRAP] Cause: 0x{:08x} @ PC: 0x{:08x}", cause, self.pc);
+            }
             self.handle_trap(cause, self.pc);
             return;
         }
@@ -121,14 +147,29 @@ impl Cpu {
         // 3. Fetch instruction
         let raw = self.bus.read_u32(self.pc);
         let inst = Instruction(raw);
+
+        // 4. Trace logging if enabled
+        if trace {
+            eprintln!(
+                "[0x{:08x}] {:08x}  {:<8} rd:x{:02} rs1:x{:02} rs2:x{:02} (ra:0x{:08x} sp:0x{:08x} a0:0x{:08x})",
+                self.pc,
+                raw,
+                inst.mnemonic(),
+                inst.rd(),
+                inst.rs1(),
+                inst.rs2(),
+                self.regs[1],
+                self.regs[2],
+                self.regs[10]
+            );
+        }
+
         let mut next_pc = self.pc.wrapping_add(4);
 
-        // 4. Decode & Execute
+        // 5. Decode & Execute
         match inst.opcode() {
             // --- FENCE / FENCE.I ---
-            0x0F => {
-                // In single-threaded basic emulation, memory is sequentially consistent
-            }
+            0x0F => {}
 
             // --- SYSTEM / CSR (0x73) ---
             0x73 => {
@@ -158,7 +199,7 @@ impl Cpu {
                                 next_pc = self.csr.mepc;
                             }
                             0x105 => {
-                                // WFI (Wait For Interrupt) - no-op in single step
+                                // WFI (Wait For Interrupt)
                             }
                             _ => unimplemented!("Unsupported system funct12: {:#x}", funct12),
                         }
