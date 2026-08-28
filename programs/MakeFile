@@ -1,0 +1,28 @@
+CROSS_COMPILE ?= riscv-none-elf-
+CC      := $(CROSS_COMPILE)gcc
+OBJDUMP := $(CROSS_COMPILE)objdump
+OBJCOPY := $(CROSS_COMPILE)objcopy
+
+CFLAGS  := -march=rv32imac_zicsr -mabi=ilp32 -O2 -g -nostdlib -fno-builtin -Wall
+LDFLAGS := -T link.ld
+
+TARGETS := atomic_test.elf compressed_test.elf dma_test.elf scheduler_test.elf
+
+all: $(TARGETS)
+
+atomic_test.elf: crt0.s atomic_test.c link.ld
+	$(CC) $(CFLAGS) $(LDFLAGS) crt0.s atomic_test.c -o $@
+
+compressed_test.elf: crt0.s compressed_test.c link.ld
+	$(CC) $(CFLAGS) $(LDFLAGS) crt0.s compressed_test.c -o $@
+
+dma_test.elf: crt0.s dma_test.c link.ld
+	$(CC) $(CFLAGS) $(LDFLAGS) crt0.s dma_test.c -o $@
+
+scheduler_test.elf: scheduler_asm.s scheduler_test.c link.ld
+	$(CC) $(CFLAGS) $(LDFLAGS) scheduler_asm.s scheduler_test.c -o $@
+
+clean:
+	rm -f $(TARGETS) *.o *.dump
+
+.PHONY: all clean
