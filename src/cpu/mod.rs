@@ -141,6 +141,11 @@ impl Cpu {
             self.bus.plic.set_interrupt_pending(2);
         }
 
+        // Service DMA Engine (transfer up to 16 bytes/cycle) into PLIC line 3
+        if self.bus.tick_dma(16) {
+            self.bus.plic.set_interrupt_pending(3);
+        }
+
         // 1. Tick hardware timers and cycle counter
         self.bus.clint.tick();
         self.csr.cycle = self.csr.cycle.wrapping_add(1);

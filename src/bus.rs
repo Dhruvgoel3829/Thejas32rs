@@ -1,4 +1,5 @@
 use crate::clint::{CLINT_BASE, Clint};
+use crate::dma::{DMA_BASE, Dma};
 use crate::gpio::{GPIO_BASE, Gpio};
 use crate::i2c::{I2C_BASE, I2c};
 use crate::i2s::{I2S_BASE, I2s};
@@ -22,6 +23,7 @@ pub struct Bus {
     pub spi: Spi,
     pub i2s: I2s,
     pub i2c: I2c,
+    pub dma: Dma,
 }
 
 impl Bus {
@@ -36,7 +38,45 @@ impl Bus {
             spi: Spi::new(),
             i2s: I2s::new(),
             i2c: I2c::new(),
+            dma: Dma::new(),
         }
+    }
+    /// Tick the DMA engine: transfers up to `chunk_size` bytes per cycle
+    pub fn tick_dma(&mut self, chunk_size: usize) -> bool {
+        if !self.dma.is_active() {
+            return false;
+        }
+
+        let to_transfer = std::cmp::min(self.dma.bytes_remaining as usize, chunk_size);
+
+        let src_inc = (self.dma.ctrl & 0x04) != 0;
+        let dst_inc = (self.dma.ctrl & 0x08) != 0;
+
+        for _ in 0..to_transfer {
+            let byte = self.read_u8(self.dma.current_src);
+            self.write_u8(self.dma.current_dst, byte);
+
+            if src_inc {
+                self.dma.current_src = self.dma.current_src.wrapping_add(1);
+            }
+            if dst_inc {
+                self.dma.current_dst = self.dma.current_dst.wrapping_add(1);
+            }
+
+            self.dma.bytes_remaining -= 1;
+        }
+
+        // If transfer completed
+        if self.dma.bytes_remaining == 0 {
+            self.dma.status &= !0x01; // Clear BUSY
+            self.dma.status |= 0x02; // Set DONE
+            self.dma.ctrl &= !0x01; // Clear START bit
+
+            let irq_en = (self.dma.ctrl & 0x02) != 0;
+            return irq_en; // Returns true if PLIC interrupt should fire
+        }
+
+        false
     }
 
     pub fn load_elf(&mut self, path: &str) -> u32 {
@@ -104,6 +144,11 @@ impl Bus {
                 let shift = (offset & 0x3) * 8;
                 ((self.i2c.read_u32(offset & !0x3) >> shift) & 0xFF) as u8
             }
+            0x1006_0000..=0x1006_0FFF => {
+                let offset = addr - DMA_BASE;
+                let shift = (offset & 0x3) * 8;
+                ((self.dma.read_u32(offset & !0x3) >> shift) & 0xFF) as u8
+            }
             _ => 0,
         }
     }
@@ -164,6 +209,14 @@ impl Bus {
                 current = (current & !(0xFF << shift)) | ((val as u32) << shift);
                 self.i2c.write_u32(word_offset, current);
             }
+            0x1006_0000..=0x1006_0FFF => {
+                let offset = addr - DMA_BASE;
+                let word_offset = offset & !0x3;
+                let mut current = self.dma.read_u32(word_offset);
+                let shift = (offset & 0x3) * 8;
+                current = (current & !(0xFF << shift)) | ((val as u32) << shift);
+                self.dma.write_u32(word_offset, current);
+            }
             _ => {}
         }
     }
@@ -184,6 +237,7 @@ impl Bus {
                 0x1003_0000..=0x1003_0FFF => return self.spi.read_u32(addr - SPI_BASE),
                 0x1004_0000..=0x1004_0FFF => return self.i2s.read_u32(addr - I2S_BASE),
                 0x1005_0000..=0x1005_0FFF => return self.i2c.read_u32(addr - I2C_BASE),
+                0x1006_0000..=0x1006_0FFF => return self.dma.read_u32(addr - DMA_BASE),
                 _ => {}
             }
         }
@@ -226,6 +280,10 @@ impl Bus {
                 }
                 0x1005_0000..=0x1005_0FFF => {
                     self.i2c.write_u32(addr - I2C_BASE, val);
+                    return;
+                }
+                0x1006_0000..=0x1006_0FFF => {
+                    self.dma.write_u32(addr - DMA_BASE, val);
                     return;
                 }
                 _ => {}

@@ -8,6 +8,7 @@ mod plic;
 mod spi;
 mod timer;
 mod uart;
+mod dma;
 
 use bus::Bus;
 use clap::Parser;
