@@ -1,8 +1,10 @@
 // src/cpu/mod.rs
+pub mod c_decode;
 pub mod csr;
 pub mod decode;
 
 use crate::bus::Bus;
+use c_decode::decompress;
 use csr::Csr;
 use decode::Instruction;
 
@@ -151,29 +153,55 @@ impl Cpu {
             self.handle_trap(cause, self.pc);
             return;
         }
+        // 3. Fetch instruction (Variable-length 16-bit / 32-bit)
+        let raw_16_lo = self.bus.read_u16(self.pc);
+        let (raw, inst_len) = if (raw_16_lo & 0x3) != 0x3 {
+            // 16-bit Compressed Instruction
+            let decompressed = decompress(raw_16_lo).unwrap_or_else(|| {
+                self.dump_registers();
+                panic!(
+                    "Illegal or unimplemented RV32C instruction 0x{:04x} at PC 0x{:08x}",
+                    raw_16_lo, self.pc
+                );
+            });
+            (decompressed, 2)
+        } else {
+            // 32-bit Instruction (composed from two 16-bit halfwords)
+            let raw_16_hi = self.bus.read_u16(self.pc.wrapping_add(2));
+            let full_inst = (raw_16_lo as u32) | ((raw_16_hi as u32) << 16);
+            (full_inst, 4)
+        };
 
-        // 3. Fetch instruction
-        let raw = self.bus.read_u32(self.pc);
         let inst = Instruction(raw);
 
         // 4. Trace logging if enabled
+        // In src/cpu/mod.rs (inside step())
         if trace {
-            eprintln!(
-                "[0x{:08x}] {:08x}  {:<8} rd:x{:02} rs1:x{:02} rs2:x{:02} (ra:0x{:08x} sp:0x{:08x} a0:0x{:08x})",
-                self.pc,
-                raw,
-                inst.mnemonic(),
-                inst.rd(),
-                inst.rs1(),
-                inst.rs2(),
-                self.regs[1],
-                self.regs[2],
-                self.regs[10]
-            );
+            if inst_len == 2 {
+                eprint!(
+                    "[0x{:08x}] (16b: {:04x} -> {:08x})  {:<8} rd:x{:02} rs1:x{:02} rs2:x{:02}\r\n",
+                    self.pc,
+                    raw_16_lo,
+                    raw,
+                    inst.mnemonic(),
+                    inst.rd(),
+                    inst.rs1(),
+                    inst.rs2()
+                );
+            } else {
+                eprint!(
+                    "[0x{:08x}] {:08x}  {:<8} rd:x{:02} rs1:x{:02} rs2:x{:02}\r\n",
+                    self.pc,
+                    raw,
+                    inst.mnemonic(),
+                    inst.rd(),
+                    inst.rs1(),
+                    inst.rs2()
+                );
+            }
         }
 
-        let mut next_pc = self.pc.wrapping_add(4);
-
+        let mut next_pc = self.pc.wrapping_add(inst_len);
         // 5. Decode & Execute
         match inst.opcode() {
             // --- FENCE / FENCE.I ---
@@ -373,17 +401,16 @@ impl Cpu {
 
             // --- JAL (Jump and Link) ---
             0x6F => {
-                self.write_reg(inst.rd(), self.pc.wrapping_add(4));
+                self.write_reg(inst.rd(), self.pc.wrapping_add(inst_len));
                 next_pc = self.pc.wrapping_add(inst.imm_j());
             }
 
             // --- JALR (Jump and Link Register) ---
             0x67 => {
                 let target = self.read_reg(inst.rs1()).wrapping_add(inst.imm_i()) & !1;
-                self.write_reg(inst.rd(), self.pc.wrapping_add(4));
+                self.write_reg(inst.rd(), self.pc.wrapping_add(inst_len));
                 next_pc = target;
             }
-
             // --- BRANCH (BEQ, BNE, BLT, BGE, BLTU, BGEU) ---
             0x63 => {
                 let s1 = self.read_reg(inst.rs1());

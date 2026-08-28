@@ -175,7 +175,8 @@ impl Bus {
     }
 
     pub fn read_u32(&mut self, addr: u32) -> u32 {
-        if addr % 4 == 0 {
+        // MMIO peripherals only support 4-byte aligned word reads
+        if (0x0C00_0000..=0x1005_FFFF).contains(&addr) && (addr % 4 == 0) {
             match addr {
                 0x0C00_0000..=0x0C3F_FFFF => return self.plic.read_u32(addr - PLIC_BASE),
                 0x1001_0000..=0x1001_0FFF => return self.gpio.read_u32(addr - GPIO_BASE),
@@ -183,11 +184,11 @@ impl Bus {
                 0x1003_0000..=0x1003_0FFF => return self.spi.read_u32(addr - SPI_BASE),
                 0x1004_0000..=0x1004_0FFF => return self.i2s.read_u32(addr - I2S_BASE),
                 0x1005_0000..=0x1005_0FFF => return self.i2c.read_u32(addr - I2C_BASE),
-
                 _ => {}
             }
         }
 
+        // RAM reads: always byte-compose to seamlessly support 2-byte aligned 32-bit instructions
         let b0 = self.read_u8(addr) as u32;
         let b1 = self.read_u8(addr + 1) as u32;
         let b2 = self.read_u8(addr + 2) as u32;

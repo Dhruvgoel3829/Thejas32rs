@@ -1,14 +1,13 @@
 mod bus;
 mod clint;
 mod cpu;
-mod plic;
-mod uart;
 mod gpio;
-mod i2s;
 mod i2c;
+mod i2s;
+mod plic;
 mod spi;
 mod timer;
-
+mod uart;
 
 use bus::Bus;
 use clap::Parser;
@@ -75,11 +74,11 @@ fn main() {
             cpu.step(cli.trace);
             cycle_count += 1;
 
-            if cli.max_cycles > 0 && cycle_count >= cli.max_cycles {
-                break;
+            if cpu.pc == 0 {
+                break; // Clean shutdown when firmware jumps to 0
             }
 
-            if cpu.pc == 0 {
+            if cli.max_cycles > 0 && cycle_count >= cli.max_cycles {
                 break;
             }
         }
