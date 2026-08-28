@@ -1,6 +1,9 @@
+// src/main.rs
 mod bus;
 mod clint;
 mod cpu;
+mod dma;
+mod gdb;
 mod gpio;
 mod i2c;
 mod i2s;
@@ -8,12 +11,12 @@ mod plic;
 mod spi;
 mod timer;
 mod uart;
-mod dma;
 
 use bus::Bus;
 use clap::Parser;
 use cpu::Cpu;
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
+use gdb::GdbStub;
 
 #[derive(Parser, Debug)]
 #[command(name = "Thejas32rs")]
@@ -36,6 +39,10 @@ struct Cli {
     /// Limit maximum execution cycles (0 for unlimited)
     #[arg(short, long, default_value_t = 0)]
     max_cycles: u64,
+
+    /// Enable GDB server on specified TCP port (e.g. 1234)
+    #[arg(long)]
+    gdb_port: Option<u16>,
 }
 
 struct RawModeGuard;
@@ -53,7 +60,6 @@ impl Drop for RawModeGuard {
     }
 }
 
-// src/main.rs
 fn main() {
     let cli = Cli::parse();
     let mut bus = Bus::new();
@@ -63,12 +69,35 @@ fn main() {
     eprintln!("[INFO] Entry point: 0x{:08x}", entry_point);
 
     let mut cpu = Cpu::new(bus, entry_point);
-    cpu.write_reg(2, 0x8007_0000); // sp
+    cpu.write_reg(2, 0x8007_0000); // Set sp to top of SRAM
 
     let mut cycle_count: u64 = 0;
 
-    // Run execution inside a scoped block so raw mode drops before final logs
-    {
+    if let Some(port) = cli.gdb_port {
+        let mut gdb = GdbStub::wait_for_connection(port);
+
+        // Halt on start and wait for GDB commands
+        if !gdb.handle_client(&mut cpu) {
+            return;
+        }
+
+        loop {
+            cpu.step(cli.trace);
+
+            if cpu.pc == 0 {
+                gdb.notify_stop();
+                break;
+            }
+
+            if gdb.is_at_breakpoint(cpu.pc) {
+                gdb.notify_stop();
+                if !gdb.handle_client(&mut cpu) {
+                    break;
+                }
+            }
+        }
+    } else {
+        // Standard non-GDB execution loop with raw terminal guard for UART I/O
         let _raw_guard = RawModeGuard::enter();
 
         loop {
@@ -83,7 +112,7 @@ fn main() {
                 break;
             }
         }
-    } // <-- Raw mode is disabled here automatically!
+    }
 
     if cli.max_cycles > 0 && cycle_count >= cli.max_cycles {
         println!(
