@@ -1,12 +1,18 @@
-// src/cpu/mod.rs
 pub mod c_decode;
 pub mod csr;
 pub mod decode;
+pub mod pmp;
 
 use crate::bus::Bus;
 use c_decode::decompress;
 use csr::Csr;
 use decode::Instruction;
+use pmp::PmpAccessType;
+
+// Standard RISC-V Exception Causes
+const CAUSE_INSN_ACCESS_FAULT: u32 = 1;
+const CAUSE_LOAD_ACCESS_FAULT: u32 = 5;
+const CAUSE_STORE_ACCESS_FAULT: u32 = 7;
 
 pub struct Cpu {
     pub regs: [u32; 32],
@@ -176,6 +182,17 @@ impl Cpu {
             let full_inst = (raw_16_lo as u32) | ((raw_16_hi as u32) << 16);
             (full_inst, 4)
         };
+
+        if self
+            .csr
+            .pmp
+            .check_access(self.pc, 2, PmpAccessType::Execute, self.csr.priv_mode)
+            .is_err()
+        {
+            self.csr.mtval = self.pc;
+            self.handle_trap(CAUSE_INSN_ACCESS_FAULT, self.pc);
+            return;
+        }
 
         let inst = Instruction(raw);
 
@@ -437,6 +454,16 @@ impl Cpu {
             // --- LOAD (LB, LH, LW, LBU, LHU) ---
             0x03 => {
                 let addr = self.read_reg(inst.rs1()).wrapping_add(inst.imm_i());
+                if self
+                    .csr
+                    .pmp
+                    .check_access(addr, 4, PmpAccessType::Read, self.csr.priv_mode)
+                    .is_err()
+                {
+                    self.csr.mtval = addr;
+                    self.handle_trap(CAUSE_LOAD_ACCESS_FAULT, self.pc);
+                    return;
+                }
                 let val = match inst.funct3() {
                     0x0 => (self.bus.read_u8(addr) as i8 as i32) as u32, // LB
                     0x1 => (self.bus.read_u16(addr) as i16 as i32) as u32, // LH
@@ -451,6 +478,16 @@ impl Cpu {
             // --- STORE (SB, SH, SW) ---
             0x23 => {
                 let addr = self.read_reg(inst.rs1()).wrapping_add(inst.imm_s());
+                if self
+                    .csr
+                    .pmp
+                    .check_access(addr, 4, PmpAccessType::Write, self.csr.priv_mode)
+                    .is_err()
+                {
+                    self.csr.mtval = addr;
+                    self.handle_trap(CAUSE_STORE_ACCESS_FAULT, self.pc);
+                    return;
+                }
                 let val = self.read_reg(inst.rs2());
                 match inst.funct3() {
                     0x0 => self.bus.write_u8(addr, val as u8),
