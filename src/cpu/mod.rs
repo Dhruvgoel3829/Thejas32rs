@@ -4,6 +4,7 @@ pub mod decode;
 pub mod pmp;
 
 use crate::bus::Bus;
+use crate::wdt::WdtAction;
 use c_decode::decompress;
 use csr::Csr;
 use decode::Instruction;
@@ -37,6 +38,17 @@ impl Cpu {
             bus,
             atomic_reservation: None,
         }
+    }
+
+    pub fn reset(&mut self, reset_vector: u32) {
+        eprintln!(
+            "\n[WDT] Hardware Watchdog Reset Triggered! Resetting CPU to 0x{:08X}...\n",
+            reset_vector
+        );
+        self.pc = reset_vector;
+        self.regs = [0; 32];
+        self.write_reg(2, 0x8007_0000); // Re-initialize SP
+        self.csr = Csr::new();
     }
 
     #[inline(always)]
@@ -132,6 +144,16 @@ impl Cpu {
     }
 
     pub fn step(&mut self, trace: bool) {
+        match self.bus.wdt.tick() {
+            WdtAction::SystemReset => {
+                self.reset(0x8000_0000);
+                return;
+            }
+            WdtAction::Interrupt => {
+                self.bus.plic.set_interrupt_pending(4); // WDT IRQ on PLIC line 4
+            }
+            WdtAction::None => {}
+        }
         // Check if UART received a byte and assert line 1 on the PLIC
         // UART RX line -> PLIC Source 1
         if (self.bus.uart.read_u8(0x05) & 0x01) != 0 {

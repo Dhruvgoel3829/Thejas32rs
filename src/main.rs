@@ -11,6 +11,7 @@ mod plic;
 mod spi;
 mod timer;
 mod uart;
+mod wdt;
 
 use bus::Bus;
 use clap::Parser;

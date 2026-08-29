@@ -7,6 +7,7 @@ use crate::plic::{PLIC_BASE, Plic};
 use crate::spi::{SPI_BASE, Spi};
 use crate::timer::{TIMER_BASE, Timer};
 use crate::uart::Uart;
+use crate::wdt::{WDT_BASE, Wdt, WdtAction};
 use goblin::elf::Elf;
 use std::fs;
 
@@ -24,6 +25,7 @@ pub struct Bus {
     pub i2s: I2s,
     pub i2c: I2c,
     pub dma: Dma,
+    pub wdt: Wdt,
 }
 
 impl Bus {
@@ -39,6 +41,7 @@ impl Bus {
             i2s: I2s::new(),
             i2c: I2c::new(),
             dma: Dma::new(),
+            wdt: Wdt::new(),
         }
     }
     /// Tick the DMA engine: transfers up to `chunk_size` bytes per cycle
@@ -149,6 +152,11 @@ impl Bus {
                 let shift = (offset & 0x3) * 8;
                 ((self.dma.read_u32(offset & !0x3) >> shift) & 0xFF) as u8
             }
+            0x1007_0000..=0x1007_0FFF => {
+                let offset = addr - WDT_BASE;
+                let shift = (offset & 0x3) * 8;
+                ((self.wdt.read_u32(offset & !0x3) >> shift) & 0xFF) as u8
+            }
             _ => 0,
         }
     }
@@ -217,6 +225,14 @@ impl Bus {
                 current = (current & !(0xFF << shift)) | ((val as u32) << shift);
                 self.dma.write_u32(word_offset, current);
             }
+            0x1007_0000..=0x1007_0FFF => {
+                let offset = addr - WDT_BASE;
+                let word_offset = offset & !0x3;
+                let mut current = self.wdt.read_u32(word_offset);
+                let shift = (offset & 0x3) * 8;
+                current = (current & !(0xFF << shift)) | ((val as u32) << shift);
+                self.wdt.write_u32(word_offset, current);
+            }
             _ => {}
         }
     }
@@ -238,6 +254,7 @@ impl Bus {
                 0x1004_0000..=0x1004_0FFF => return self.i2s.read_u32(addr - I2S_BASE),
                 0x1005_0000..=0x1005_0FFF => return self.i2c.read_u32(addr - I2C_BASE),
                 0x1006_0000..=0x1006_0FFF => return self.dma.read_u32(addr - DMA_BASE),
+                0x1007_0000..=0x1007_0FFF => return self.wdt.read_u32(addr - WDT_BASE),
                 _ => {}
             }
         }
@@ -284,6 +301,10 @@ impl Bus {
                 }
                 0x1006_0000..=0x1006_0FFF => {
                     self.dma.write_u32(addr - DMA_BASE, val);
+                    return;
+                }
+                0x1007_0000..=0x1007_0FFF => {
+                    self.wdt.write_u32(addr - WDT_BASE, val);
                     return;
                 }
                 _ => {}
