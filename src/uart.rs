@@ -7,6 +7,9 @@ use std::time::Duration;
 const UART_RHR_THR: u32 = 0x00;
 const UART_LSR: u32 = 0x05;
 
+pub const UART_BASE: u32 = 0x1000_0000;
+pub const UART_SIZE: u32 = 0x1000;
+
 pub struct Uart {
     rx_receiver: Receiver<u8>,
     rx_buffer: Option<u8>,

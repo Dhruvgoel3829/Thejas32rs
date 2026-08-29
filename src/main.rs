@@ -12,6 +12,7 @@ mod spi;
 mod timer;
 mod uart;
 mod wdt;
+mod qspi;
 
 use bus::Bus;
 use clap::Parser;
