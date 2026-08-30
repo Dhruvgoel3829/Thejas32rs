@@ -59,7 +59,7 @@ Address Range            Size        Region
 - [Rust](https://www.rust-lang.org/tools/install) ≥ **1.85** (edition 2024 requires this version)
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/Dhruvgoel3829/Thejas32rs
 cd Thejas32rs
 cargo build --release
 ```
