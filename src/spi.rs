@@ -1,4 +1,3 @@
-// src/spi.rs
 use crate::ipc::SocketBackend;
 
 pub const SPI_BASE: u32 = 0x1003_0000;
