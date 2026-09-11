@@ -3,17 +3,11 @@
 .type _start, @function
 
 _start:
-    # 1. Disable all interrupts during early boot
-    csrw    mstatus, zero
-    csrw    mie, zero
+    # Set stack pointer to top of SRAM (512KB from 0x80000000)
+    li sp, 0x80070000
 
-    # 2. Set Stack Pointer to top of SRAM (512 KB offset)
-    li      sp, 0x80070000
+    # Call C main function
+    call main
 
-    # 3. Call C main()
-    call    main
-
-    # 4. If main returns, jump to 0 to halt emulator
-    jr      zero
-
-.size _start, . - _start
+    # Fallback infinite loop if main returns
+1:  j 1b
