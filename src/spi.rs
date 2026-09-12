@@ -3,10 +3,10 @@ use crate::ipc::SocketBackend;
 pub const SPI_BASE: u32 = 0x1003_0000;
 pub const SPI_SIZE: u32 = 0x1000;
 
-const SPI_CTRL_OFFSET: u32   = 0x00;
-const SPI_DATA_OFFSET: u32   = 0x04;
+const SPI_CTRL_OFFSET: u32 = 0x00;
+const SPI_DATA_OFFSET: u32 = 0x04;
 const SPI_STATUS_OFFSET: u32 = 0x08;
-const SPI_CS_OFFSET: u32     = 0x0C;
+const SPI_CS_OFFSET: u32 = 0x0C;
 
 pub struct Spi {
     pub ctrl: u32,
@@ -42,16 +42,21 @@ impl Spi {
             SPI_CTRL_OFFSET => self.ctrl = val,
             SPI_CS_OFFSET => {
                 self.cs = val;
-                // Notify external proxy of CS assertion/deassertion (Packet Type 0x01)
+                // If this is the first chip select assertion, wait for the proxy to attach
+                if (val & 0x01) == 0 && self.ipc.stream.is_none() {
+                    self.ipc.wait_for_client();
+                }
                 let cs_byte = (val & 0xFF) as u8;
                 self.ipc.send(&[0x01, cs_byte]);
             }
             SPI_DATA_OFFSET => {
+                if self.ipc.stream.is_none() {
+                    self.ipc.wait_for_client();
+                }
                 let mosi = (val & 0xFF) as u8;
                 let cs_state = (self.cs & 0xFF) as u8;
-                // Stream transfer over socket and read MISO
                 self.data_rx = self.ipc.spi_exchange(cs_state, mosi);
-                self.status |= 0x01; // RX data ready
+                self.status |= 0x01;
             }
             _ => {}
         }

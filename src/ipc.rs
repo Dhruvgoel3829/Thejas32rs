@@ -5,7 +5,7 @@ use std::path::Path;
 
 pub struct SocketBackend {
     listener: Option<UnixListener>,
-    stream: Option<UnixStream>,
+    pub stream: Option<UnixStream>,
     path: String,
 }
 
@@ -25,6 +25,24 @@ impl SocketBackend {
             listener,
             stream: None,
             path: path.to_string(),
+        }
+    }
+
+    pub fn wait_for_client(&mut self) {
+        if self.stream.is_some() {
+            return;
+        }
+
+        println!("[IPC] Waiting for external sensor/simulator on {}...", self.path);
+        if let Some(ref listener) = self.listener {
+            // Temporarily set listener to blocking mode
+            let _ = listener.set_nonblocking(false);
+            if let Ok((stream, _)) = listener.accept() {
+                let _ = stream.set_nonblocking(true);
+                self.stream = Some(stream);
+                println!("[IPC] Connected to simulator on {}", self.path);
+            }
+            let _ = listener.set_nonblocking(true);
         }
     }
 
