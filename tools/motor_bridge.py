@@ -5,28 +5,38 @@ import struct
 
 SOCKET_PATH = "/tmp/thejas_gpio.sock"
 
-def main():
-    print(f"[MOTOR PROXY] Waiting for emulator socket at {SOCKET_PATH}...")
-    while not os.path.exists(SOCKET_PATH):
+def connect_to_emulator(path):
+    print(f"[MOTOR PROXY] Waiting for emulator socket at {path}...")
+    while True:
+        if os.path.exists(path):
+            try:
+                client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                client.connect(path)
+                print(f"[MOTOR PROXY] Connected to {path}!\n")
+                return client
+            except (ConnectionRefusedError, FileNotFoundError):
+                pass
         time.sleep(0.05)
 
-    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    client.connect(SOCKET_PATH)
-    print(f"[MOTOR PROXY] Connected to /tmp/thejas_gpio.sock!\n")
+def main():
+    client = connect_to_emulator(SOCKET_PATH)
+
     print("=" * 60)
     print("  M1 (Rear Right) | M2 (Front Right) | M3 (Rear Left) | M4 (Front Left)")
     print("=" * 60)
 
     try:
         while True:
-            # Each GPIO_DATA write emits a 4-byte little-endian u32
-            payload = client.recv(4)
-            if not payload or len(payload) < 4:
-                break
+            # Read exactly 4 bytes (u32 little-endian)
+            payload = bytearray()
+            while len(payload) < 4:
+                chunk = client.recv(4 - len(payload))
+                if not chunk:
+                    return
+                payload.extend(chunk)
 
             m1, m2, m3, m4 = struct.unpack("4B", payload)
 
-            # Convert 0-255 range to percentages
             pct_m1 = (m1 / 255.0) * 100
             pct_m2 = (m2 / 255.0) * 100
             pct_m3 = (m3 / 255.0) * 100

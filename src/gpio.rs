@@ -44,11 +44,15 @@ impl Gpio {
     }
 
     pub fn write_u32(&mut self, offset: u32, val: u32) {
+        // Halt until motor proxy attaches on the first write
+        if self.ipc.stream.is_none() {
+            self.ipc.wait_for_client();
+        }
+
         match offset {
             GPIO_DIR_OFFSET => self.dir = val,
             GPIO_DATA_OFFSET => {
                 self.data = val;
-                // Broadcast pin changes (e.g. motor PWM / DShot signals) to Gazebo bridge
                 self.ipc.send(&self.data.to_le_bytes());
             }
             GPIO_SET_OFFSET => {
