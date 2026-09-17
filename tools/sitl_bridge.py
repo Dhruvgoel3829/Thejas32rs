@@ -163,7 +163,7 @@ def spi_imu_server():
                             0x3B: (ax >> 8) & 0xFF, 0x3C: ax & 0xFF,
                             0x3D: (ay >> 8) & 0xFF, 0x3E: ay & 0xFF,
                             0x3F: (az >> 8) & 0xFF, 0x40: az & 0xFF,
-                            0x41: 0x09,             0x42: 0xC4, // ~25C
+                            0x41: 0x09,             0x42: 0xC4, #~25C
                             0x43: (gx >> 8) & 0xFF, 0x44: gx & 0xFF,
                             0x45: (gy >> 8) & 0xFF, 0x46: gy & 0xFF,
                             0x47: (gz >> 8) & 0xFF, 0x48: gz & 0xFF,
@@ -208,9 +208,11 @@ def main():
     t_spi.start()
     t_motor.start()
 
-    t_gz.join()
-    t_spi.join()
-    t_motor.join()
+    try:
+        while True:
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        print("\n[SITL BRIDGE] Shutting down bridge cleanly...")
 
 if __name__ == "__main__":
     main()
