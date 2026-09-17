@@ -1,3 +1,0 @@
-/home/dhruvgoel/lab/Thejas32rs/gazebo/build/CMakeFiles/thejas_sitl.dir
-/home/dhruvgoel/lab/Thejas32rs/gazebo/build/CMakeFiles/edit_cache.dir
-/home/dhruvgoel/lab/Thejas32rs/gazebo/build/CMakeFiles/rebuild_cache.dir
