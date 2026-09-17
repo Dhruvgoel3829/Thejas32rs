@@ -27,7 +27,7 @@
           </inertia>
         </inertial>
 
-        <!-- Visual representation of fuselage -->
+        <!-- Visual representation of fuselage with gunmetal finish -->
         <visual name="base_link_visual">
           <geometry>
             <box>
@@ -35,8 +35,9 @@
             </box>
           </geometry>
           <material>
-            <ambient>0.2 0.2 0.2 1</ambient>
-            <diffuse>0.3 0.3 0.3 1</diffuse>
+            <ambient>0.1 0.1 0.15 1</ambient>
+            <diffuse>0.3 0.3 0.4 1</diffuse>
+            <specular>0.5 0.5 0.5 1</specular>
           </material>
         </visual>
 
@@ -69,7 +70,7 @@
         </sensor>
       </link>
 
-      <!-- ROTOR 0: Rear Right (CW) -->
+      <!-- ROTOR 0: Rear Right (CW) - Dark gunmetal with blue tips -->
       <link name="rotor_0">
         <pose>0.13 -0.22 0.023 0 0 0</pose>
         <inertial>
@@ -84,7 +85,11 @@
           <geometry>
             <cylinder><radius>0.1</radius><length>0.005</length></cylinder>
           </geometry>
-          <material><ambient>0 0 1 1</ambient></material>
+          <material>
+            <ambient>0.2 0.2 0.2 1</ambient>
+            <diffuse>0.4 0.4 0.4 1</diffuse>
+            <specular>0.5 0.5 0.5 1</specular>
+          </material>
         </visual>
       </link>
       <joint name="rotor_0_joint" type="revolute">
@@ -93,7 +98,7 @@
         <axis><xyz>0 0 1</xyz></axis>
       </joint>
 
-      <!-- ROTOR 1: Front Right (CCW) -->
+      <!-- ROTOR 1: Front Right (CCW) - Gunmetal with red accents -->
       <link name="rotor_1">
         <pose>-0.13 0.2 0.023 0 0 0</pose>
         <inertial>
@@ -108,7 +113,11 @@
           <geometry>
             <cylinder><radius>0.1</radius><length>0.005</length></cylinder>
           </geometry>
-          <material><ambient>1 0 0 1</ambient></material>
+          <material>
+            <ambient>0.3 0.1 0.1 1</ambient>
+            <diffuse>0.5 0.3 0.3 1</diffuse>
+            <specular>0.5 0.5 0.5 1</specular>
+          </material>
         </visual>
       </link>
       <joint name="rotor_1_joint" type="revolute">
@@ -117,7 +126,7 @@
         <axis><xyz>0 0 1</xyz></axis>
       </joint>
 
-      <!-- ROTOR 2: Rear Left (CCW) -->
+      <!-- ROTOR 2: Rear Left (CCW) - Dark gunmetal with cyan tips -->
       <link name="rotor_2">
         <pose>0.13 0.22 0.023 0 0 0</pose>
         <inertial>
@@ -132,7 +141,11 @@
           <geometry>
             <cylinder><radius>0.1</radius><length>0.005</length></cylinder>
           </geometry>
-          <material><ambient>0 0 1 1</ambient></material>
+          <material>
+            <ambient>0.2 0.3 0.3 1</ambient>
+            <diffuse>0.4 0.5 0.5 1</diffuse>
+            <specular>0.5 0.5 0.5 1</specular>
+          </material>
         </visual>
       </link>
       <joint name="rotor_2_joint" type="revolute">
@@ -141,7 +154,7 @@
         <axis><xyz>0 0 1</xyz></axis>
       </joint>
 
-      <!-- ROTOR 3: Front Left (CW) -->
+      <!-- ROTOR 3: Front Left (CW) - Gunmetal with magenta accents -->
       <link name="rotor_3">
         <pose>-0.13 -0.2 0.023 0 0 0</pose>
         <inertial>
@@ -156,7 +169,11 @@
           <geometry>
             <cylinder><radius>0.1</radius><length>0.005</length></cylinder>
           </geometry>
-          <material><ambient>1 0 0 1</ambient></material>
+          <material>
+            <ambient>0.3 0.1 0.3 1</ambient>
+            <diffuse>0.5 0.3 0.5 1</diffuse>
+            <specular>0.5 0.5 0.5 1</specular>
+          </material>
         </visual>
       </link>
       <joint name="rotor_3_joint" type="revolute">
