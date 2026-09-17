@@ -4,6 +4,7 @@ project(thejas_gazebo_sitl)
 find_package(gazebo REQUIRED)
 include_directories(${GAZEBO_INCLUDE_DIRS})
 link_directories(${GAZEBO_LIBRARY_DIRS})
+include_directories(/usr/include/tbb/compat)
 
 # Add TBB legacy / preview flags & enforce C++17
 add_compile_definitions(
