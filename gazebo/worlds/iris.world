@@ -95,7 +95,22 @@
       <joint name="rotor_0_joint" type="revolute">
         <parent>base_link</parent>
         <child>rotor_0</child>
-        <axis><xyz>0 0 1</xyz></axis>
+        <axis>
+          <xyz>0 0 1</xyz>
+          <limit>
+            <lower>-1e16</lower>
+            <upper>1e16</upper>
+          </limit>
+          <dynamics>
+            <damping>0.001</damping>
+            <friction>0.0001</friction>
+          </dynamics>
+        </axis>
+        <physics>
+          <ode>
+            <implicit_spring_damper>1</implicit_spring_damper>
+          </ode>
+        </physics>
       </joint>
 
       <!-- ROTOR 1: Front Right (CCW) - Gunmetal with red accents -->
@@ -123,7 +138,22 @@
       <joint name="rotor_1_joint" type="revolute">
         <parent>base_link</parent>
         <child>rotor_1</child>
-        <axis><xyz>0 0 1</xyz></axis>
+        <axis>
+          <xyz>0 0 1</xyz>
+          <limit>
+            <lower>-1e16</lower>
+            <upper>1e16</upper>
+          </limit>
+          <dynamics>
+            <damping>0.001</damping>
+            <friction>0.0001</friction>
+          </dynamics>
+        </axis>
+        <physics>
+          <ode>
+            <implicit_spring_damper>1</implicit_spring_damper>
+          </ode>
+        </physics>
       </joint>
 
       <!-- ROTOR 2: Rear Left (CCW) - Dark gunmetal with cyan tips -->
@@ -151,7 +181,22 @@
       <joint name="rotor_2_joint" type="revolute">
         <parent>base_link</parent>
         <child>rotor_2</child>
-        <axis><xyz>0 0 1</xyz></axis>
+        <axis>
+          <xyz>0 0 1</xyz>
+          <limit>
+            <lower>-1e16</lower>
+            <upper>1e16</upper>
+          </limit>
+          <dynamics>
+            <damping>0.001</damping>
+            <friction>0.0001</friction>
+          </dynamics>
+        </axis>
+        <physics>
+          <ode>
+            <implicit_spring_damper>1</implicit_spring_damper>
+          </ode>
+        </physics>
       </joint>
 
       <!-- ROTOR 3: Front Left (CW) - Gunmetal with magenta accents -->
@@ -179,7 +224,22 @@
       <joint name="rotor_3_joint" type="revolute">
         <parent>base_link</parent>
         <child>rotor_3</child>
-        <axis><xyz>0 0 1</xyz></axis>
+        <axis>
+          <xyz>0 0 1</xyz>
+          <limit>
+            <lower>-1e16</lower>
+            <upper>1e16</upper>
+          </limit>
+          <dynamics>
+            <damping>0.001</damping>
+            <friction>0.0001</friction>
+          </dynamics>
+        </axis>
+        <physics>
+          <ode>
+            <implicit_spring_damper>1</implicit_spring_damper>
+          </ode>
+        </physics>
       </joint>
 
     </model>
