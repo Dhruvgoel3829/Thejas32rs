@@ -1,13 +1,18 @@
-#include <gazebo/gazebo.hh>
-#include <gazebo/physics/physics.hh>
-#include <gazebo/sensors/sensors.hh>
-#include <gazebo/common/common.hh>
+#include <gazebo/physics/Model.hh>
+#include <gazebo/physics/Joint.hh>
+#include <gazebo/physics/World.hh>
+#include <gazebo/sensors/ImuSensor.hh>
+#include <gazebo/sensors/Sensor.hh>
+#include <gazebo/sensors/SensorManager.hh>
+#include <gazebo/common/Plugin.hh>
+#include <gazebo/common/Events.hh>
+#include <gazebo/common/Time.hh>
+#include <ignition/math/Vector3.hh>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <fcntl.h>
 #include <thread>
 #include <mutex>
-#include <vector>
 
 namespace gazebo {
 
@@ -39,34 +44,29 @@ public:
     void Load(physics::ModelPtr _model, sdf::ElementPtr _sdf) override {
         model = _model;
 
-        // Bind rotor joints (Quad-X configuration)
-        motors[0] = model->GetJoint("rotor_0_joint"); // Rear Right
-        motors[1] = model->GetJoint("rotor_1_joint"); // Front Right
-        motors[2] = model->GetJoint("rotor_2_joint"); // Rear Left
-        motors[3] = model->GetJoint("rotor_3_joint"); // Front Left
+        motors[0] = model->GetJoint("rotor_0_joint");
+        motors[1] = model->GetJoint("rotor_1_joint");
+        motors[2] = model->GetJoint("rotor_2_joint");
+        motors[3] = model->GetJoint("rotor_3_joint");
 
-        // Find IMU sensor attached to base_link
-        sensors::SensorPtr s = sensors::get_sensor("imu_sensor");
+        sensors::SensorPtr s = sensors::SensorManager::Instance()->GetSensor("iris::base_link::imu_sensor");
         imu_sensor = std::dynamic_pointer_cast<sensors::ImuSensor>(s);
 
-        // Configure UDP Socket
         sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
-        
+
         memset(&bind_addr, 0, sizeof(bind_addr));
         bind_addr.sin_family = AF_INET;
-        bind_addr.sin_port = htons(9003); // Listen for motors
+        bind_addr.sin_port = htons(9003);
         bind_addr.sin_addr.s_addr = htonl(INADDR_ANY);
         bind(sock_fd, (struct sockaddr*)&bind_addr, sizeof(bind_addr));
 
         memset(&bridge_addr, 0, sizeof(bridge_addr));
         bridge_addr.sin_family = AF_INET;
-        bridge_addr.sin_port = htons(9002); // Send IMU to bridge
+        bridge_addr.sin_port = htons(9002);
         inet_pton(AF_INET, "127.0.0.1", &bridge_addr.sin_addr);
 
-        // Start background receiver for motor commands
         rx_thread = std::thread(&ThejasSitlPlugin::ReceiveMotors, this);
 
-        // Hook into world update loop
         update_connection = event::Events::ConnectWorldUpdateBegin(
             std::bind(&ThejasSitlPlugin::OnUpdate, this)
         );
@@ -79,7 +79,7 @@ public:
             if (len == sizeof(buf)) {
                 std::lock_guard<std::mutex> lock(cmd_mutex);
                 for (int i = 0; i < 4; i++) {
-                    motor_cmd[i] = buf[i]; // [0.0 - 1.0]
+                    motor_cmd[i] = buf[i];
                 }
             }
         }
@@ -88,7 +88,6 @@ public:
     void OnUpdate() {
         common::Time cur_time = model->GetWorld()->SimTime();
 
-        // 1. Ingest IMU readings
         ignition::math::Vector3d lin_acc(0, 0, 9.81);
         ignition::math::Vector3d ang_vel(0, 0, 0);
 
@@ -97,17 +96,15 @@ public:
             ang_vel = imu_sensor->AngularVelocity();
         }
 
-        // 2. Pack UDP packet: double[7] = [sim_time, ax, ay, az, gx, gy, gz]
         double imu_pkt[7] = {
             cur_time.Double(),
             lin_acc.X(), lin_acc.Y(), lin_acc.Z(),
             ang_vel.X(), ang_vel.Y(), ang_vel.Z()
         };
 
-        sendto(sock_fd, imu_pkt, sizeof(imu_pkt), 0, 
+        sendto(sock_fd, imu_pkt, sizeof(imu_pkt), 0,
                (struct sockaddr*)&bridge_addr, sizeof(bridge_addr));
 
-        // 3. Apply motor thrust / torque to rotor joints (Max 1500 rad/s)
         const double MAX_VEL = 1500.0;
         std::lock_guard<std::mutex> lock(cmd_mutex);
         for (int i = 0; i < 4; i++) {
@@ -119,4 +116,5 @@ public:
 };
 
 GZ_REGISTER_MODEL_PLUGIN(ThejasSitlPlugin)
+
 }

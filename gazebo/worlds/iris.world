@@ -9,6 +9,12 @@
       <uri>model://ground_plane</uri>
     </include>
 
+    <physics type="ode">
+      <max_step_size>0.002</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>500</real_time_update_rate>
+    </physics>
+
     <!-- 2. Iris Quadcopter Model -->
     <model name="iris">
       <pose>0 0 0.2 0 0 0</pose>
@@ -221,27 +227,29 @@
           </material>
         </visual>
       </link>
-      <joint name="rotor_3_joint" type="revolute">
-        <parent>base_link</parent>
-        <child>rotor_3</child>
-        <axis>
-          <xyz>0 0 1</xyz>
-          <limit>
-            <lower>-1e16</lower>
-            <upper>1e16</upper>
-          </limit>
-          <dynamics>
-            <damping>0.001</damping>
-            <friction>0.0001</friction>
-          </dynamics>
-        </axis>
-        <physics>
-          <ode>
-            <implicit_spring_damper>1</implicit_spring_damper>
-          </ode>
-        </physics>
-      </joint>
+<joint name="rotor_3_joint" type="revolute">
+      <parent>base_link</parent>
+      <child>rotor_3</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>-1e16</lower>
+          <upper>1e16</upper>
+        </limit>
+        <dynamics>
+          <damping>0.001</damping>
+          <friction>0.0001</friction>
+        </dynamics>
+      </axis>
+      <physics>
+        <ode>
+          <implicit_spring_damper>1</implicit_spring_damper>
+        </ode>
+      </physics>
+    </joint>
 
-    </model>
-  </world>
+    <plugin name="thejas_sitl" filename="libthejas_sitl.so"/>
+
+  </model>
+</world>
 </sdf>
