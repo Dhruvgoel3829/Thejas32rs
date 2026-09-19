@@ -14,6 +14,7 @@ mod uart;
 mod wdt;
 mod qspi;
 mod ipc;
+mod gazebo_backend;
 
 use bus::Bus;
 use clap::Parser;
@@ -100,8 +101,8 @@ fn main() {
             }
         }
     } else {
-        // Standard non-GDB execution loop with raw terminal guard for UART I/O
-        let _raw_guard = RawModeGuard::enter();
+        // Standard non-GDB execution loop
+        // UART uses Gazebo backend (no raw mode needed)
 
         loop {
             cpu.step(cli.trace);

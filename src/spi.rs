@@ -1,4 +1,4 @@
-use crate::ipc::SocketBackend;
+use crate::gazebo_backend::GazeboImuBackend;
 
 pub const SPI_BASE: u32 = 0x1003_0000;
 pub const SPI_SIZE: u32 = 0x1000;
@@ -13,7 +13,7 @@ pub struct Spi {
     pub data_rx: u8,
     pub status: u32,
     pub cs: u32,
-    pub ipc: SocketBackend,
+    pub gazebo: GazeboImuBackend,
 }
 
 impl Spi {
@@ -21,9 +21,9 @@ impl Spi {
         Self {
             ctrl: 0,
             data_rx: 0xFF,
-            status: 0x01, // TX ready
+            status: 0x01,
             cs: 0xFFFF_FFFF,
-            ipc: SocketBackend::new("/tmp/thejas_spi.sock"),
+            gazebo: GazeboImuBackend::new().expect("Failed to create Gazebo IMU backend"),
         }
     }
 
@@ -42,20 +42,11 @@ impl Spi {
             SPI_CTRL_OFFSET => self.ctrl = val,
             SPI_CS_OFFSET => {
                 self.cs = val;
-                // If this is the first chip select assertion, wait for the proxy to attach
-                if (val & 0x01) == 0 && self.ipc.stream.is_none() {
-                    self.ipc.wait_for_client();
-                }
-                let cs_byte = (val & 0xFF) as u8;
-                self.ipc.send(&[0x01, cs_byte]);
             }
             SPI_DATA_OFFSET => {
-                if self.ipc.stream.is_none() {
-                    self.ipc.wait_for_client();
-                }
-                let mosi = (val & 0xFF) as u8;
                 let cs_state = (self.cs & 0xFF) as u8;
-                self.data_rx = self.ipc.spi_exchange(cs_state, mosi);
+                let mosi = (val & 0xFF) as u8;
+                self.data_rx = self.gazebo.spi_exchange(cs_state, mosi);
                 self.status |= 0x01;
             }
             _ => {}

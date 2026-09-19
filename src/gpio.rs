@@ -1,4 +1,4 @@
-use crate::ipc::SocketBackend;
+use crate::gazebo_backend::GazeboMotorBackend;
 
 pub const GPIO_BASE: u32 = 0x1001_0000;
 pub const GPIO_SIZE: u32 = 0x1000;
@@ -13,7 +13,7 @@ pub struct Gpio {
     pub dir: u32,
     pub data: u32,
     pub int_en: u32,
-    pub ipc: SocketBackend,
+    pub gazebo: GazeboMotorBackend,
 }
 
 impl Gpio {
@@ -22,19 +22,11 @@ impl Gpio {
             dir: 0,
             data: 0,
             int_en: 0,
-            ipc: SocketBackend::new("/tmp/thejas_gpio.sock"),
+            gazebo: GazeboMotorBackend::new().expect("Failed to create Gazebo motor backend"),
         }
     }
 
     pub fn read_u32(&mut self, offset: u32) -> u32 {
-        // Poll for external inputs (e.g. sensor DRDY interrupt pins)
-        let mut in_buf = [0u8; 4];
-        if self.ipc.recv(&mut in_buf) == 4 {
-            let ext_in = u32::from_le_bytes(in_buf);
-            let input_mask = !self.dir;
-            self.data = (self.data & self.dir) | (ext_in & input_mask);
-        }
-
         match offset {
             GPIO_DIR_OFFSET => self.dir,
             GPIO_DATA_OFFSET => self.data,
@@ -44,24 +36,19 @@ impl Gpio {
     }
 
     pub fn write_u32(&mut self, offset: u32, val: u32) {
-        // Halt until motor proxy attaches on the first write
-        if self.ipc.stream.is_none() {
-            self.ipc.wait_for_client();
-        }
-
         match offset {
             GPIO_DIR_OFFSET => self.dir = val,
             GPIO_DATA_OFFSET => {
                 self.data = val;
-                self.ipc.send(&self.data.to_le_bytes());
+                self.gazebo.send_motors(val);
             }
             GPIO_SET_OFFSET => {
                 self.data |= val;
-                self.ipc.send(&self.data.to_le_bytes());
+                self.gazebo.send_motors(self.data);
             }
             GPIO_CLEAR_OFFSET => {
                 self.data &= !val;
-                self.ipc.send(&self.data.to_le_bytes());
+                self.gazebo.send_motors(self.data);
             }
             GPIO_INT_EN_OFFSET => self.int_en = val,
             _ => {}
