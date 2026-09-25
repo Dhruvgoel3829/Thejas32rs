@@ -66,7 +66,7 @@ Cycle-accurate **RV32IM** RISC-V SoC emulator in Rust implementing the custom **
 ### Build & Run
 ```bash
 cargo build --release
-./target/release/Thejas32rs <elf> [--trace] [--dump-regs] [--max-cycles N] [--gdb-port N]
+./target/release/Thejas32rs <elf> [--trace] [--dump-regs] [--max-cycles N] [--gdb-port N] [--ipc]
 ```
 
 ### GDB Debugging
@@ -79,6 +79,18 @@ riscv64-unknown-elf-gdb hello.elf
 (gdb) target remote :1234
 (gdb) break main
 (gdb) continue
+```
+
+### IPC / SITL Mode
+```bash
+# Terminal 1: Gazebo
+cd gazebo/build && gzserver ../worlds/iris.world
+
+# Terminal 2: Python bridge (Gazebo UDP ↔ Unix sockets)
+python3 tools/sitl_bridge.py
+
+# Terminal 3: Emulator with IPC
+./target/release/Thejas32rs programs/flight_controller.elf --ipc
 ```
 
 ## Known Gaps / Unimplemented
@@ -101,7 +113,6 @@ riscv64-unknown-elf-gdb hello.elf
 - Vector/Hypervisor extensions - not implemented
 
 ### Dead/Unused Code
-- `src/ipc.rs` - SocketBackend, Gazebo IMU backend (unused - Unix socket IPC for Python bridges)
 - `RawModeGuard` in main.rs - Never constructed
 - Unused constants: `*_SIZE` in all peripheral modules, `CSR_PMPCFG1/2/3` in csr.rs
 
@@ -114,9 +125,9 @@ riscv64-unknown-elf-gdb hello.elf
 Thejas32rs/
 ├── Cargo.toml              # edition 2024, deps: goblin, crossterm, clap
 ├── .gdbinit                # GDB config
-├── .gitignore              # Cargo artifacts
+├── .gitignore              # Cargo artifacts + MEMORY.md + COMMANDS.md
 ├── src/
-│   ├── main.rs             # CLI, execution loop, GDB integration
+│   ├── main.rs             # CLI, execution loop, GDB integration, --ipc flag
 │   ├── bus.rs              # Memory bus, ELF loader, peripheral mapping
 │   ├── cpu/
 │   │   ├── mod.rs          # CPU core (644 lines) - fetch/decode/execute
@@ -127,18 +138,18 @@ Thejas32rs/
 │   │   └── execute.rs      # Placeholder (empty)
 │   ├── clint.rs            # Core Local Interruptor
 │   ├── plic.rs             # Platform-Level Interrupt Controller
-│   ├── uart.rs             # UART + crossterm polling thread
-│   ├── gpio.rs             # GPIO
+│   ├── uart.rs             # UART + crossterm polling thread (no external deps)
+│   ├── gpio.rs             # GPIO with optional IPC (Unix socket)
 │   ├── timer.rs            # Programmable timer
-│   ├── spi.rs              # SPI controller
+│   ├── spi.rs              # SPI controller with optional IPC (Unix socket)
 │   ├── i2s.rs              # I²S audio
 │   ├── i2c.rs              # I²C + virtual EEPROM
 │   ├── dma.rs              # DMA engine
 │   ├── wdt.rs              # Watchdog timer
 │   ├── qspi.rs             # QSPI flash window
 │   ├── gdb.rs              # GDB stub protocol
-│   ├── ipc.rs              # Socket IPC (UNUSED)
-│   └── gazebo_backend.rs   # Gazebo UDP (UNUSED)
+│   ├── ipc.rs              # Unix socket IPC (SocketBackend for external bridges)
+│   └── gazebo_backend.rs   # Gazebo UDP backends (used by Python bridges only)
 ├── programs/
 │   ├── MakeFile            # Builds test ELFs (needs riscv-none-elf-gcc)
 │   ├── link.ld             # Linker script
@@ -150,7 +161,7 @@ Thejas32rs/
 │   ├── CMakeLists.txt      # Gazebo plugin build
 │   ├── gazebo_thejas_sitl.cpp
 │   └── worlds/iris.world   # Quadcopter model
-└── tools/                  # Python SITL bridges
+└── tools/                  # Python SITL bridges (external to core)
 ```
 
 ## Key Implementation Details
@@ -199,58 +210,85 @@ loop {
 4. Consider FPU if RV32IMF desired
 5. Build and test Gazebo plugin (`gazebo/build/`) with `gzserver`
 
-## Gazebo SITL Integration (AI-in-the-Loop Drone Firmware Development)
+## IPC-Based External Integration (AI-in-the-Loop Drone Firmware Development)
 
-### Architecture
+### Architecture (IPC Layer - Clean Core Emulator)
 ```
-┌─────────────────┐     UDP 9002 (IMU)     ┌──────────────────┐
-│  Thejas32rs     │ ◄────────────────────── │  Gazebo Plugin   │
-│  (Rust Emulator)│                         │  (C++ ModelPlugin)│
-│                 │     UDP 9003 (Motors)   │                  │
-│  SPI ←→ IMU     │ ──────────────────────► │  4 Rotor Joints  │
-│  GPIO ←→ Motors │                         │  IMU Sensor      │
-└─────────────────┘                         └──────────────────┘
+┌─────────────────┐    Unix Sockets     ┌──────────────────┐
+│  Thejas32rs     │ ◄──────────────────► │  Python Bridges  │
+│  (Core Emulator)│                     │  (External)      │
+│                 │  /tmp/thejas_spi.sock │                  │
+│  SPI ←→ IMU     │  /tmp/thejas_gpio.sock│  sitl_bridge.py  │
+│  GPIO ←→ Motors │                     │  motor_bridge.py   │
+└─────────────────┘                     └────────┬─────────┘
+                                                 │
+                          UDP                    ▼
+                    ┌─────────────────────────────────────┐
+                    │         Gazebo Plugin (C++)         │
+                    │  (libthejas_sitl.so + iris.world)   │
+                    │  - Receives motor commands (port 9003)│
+                    │  - Sends IMU data (port 9002)        │
+                    └─────────────────────────────────────┘
 ```
 
-### Components
-| Component | File | Status |
-|-----------|------|--------|
-| Gazebo C++ Plugin | `gazebo/gazebo_thejas_sitl.cpp` | ✅ Built as `libthejas_sitl.so` |
-| Gazebo World | `gazebo/worlds/iris.world` | ✅ Quadcopter with IMU + 4 rotors |
-| Rust IMU Backend | `src/gazebo_backend.rs` | ✅ UDP port 9002 (fixed bind) |
-| Rust Motor Backend | `src/gazebo_backend.rs` | ✅ UDP port 9003 |
-| SPI Peripheral | `src/spi.rs` | ✅ Conditional Gazebo backend |
-| GPIO Peripheral | `src/gpio.rs` | ✅ Conditional Gazebo backend |
-| CLI Flag | `src/main.rs` | ✅ `--gazebo` flag |
+### Core Emulator (No External Dependencies)
+- **SPI** (`src/spi.rs`) - Uses `SocketBackend` via IPC flag, loopback mode when disabled
+- **GPIO** (`src/gpio.rs`) - Uses `SocketBackend` via IPC flag, local only when disabled
+- **UART** (`src/uart.rs`) - Pure crossterm terminal I/O (no external deps)
+- **CLI** - `--ipc` flag enables Unix socket servers
 
-### UDP Protocol
-| Port | Direction | Payload | Description |
-|------|-----------|---------|-------------|
-| 9002 | Gazebo → Rust | 7×double (56B) | IMU: timestamp, ax, ay, az, gx, gy, gz |
-| 9003 | Rust → Gazebo | 4×float (16B) | Motor commands: 0.0-1.0 normalized |
-| 9004 | Rust → Gazebo | 1×byte | Telemetry (unused in plugin) |
+### IPC Layer (`src/ipc.rs`)
+| Component | Socket Path | Purpose |
+|-----------|-------------|---------|
+| `SocketBackend` (SPI) | `/tmp/thejas_spi.sock` | Full-duplex SPI exchange with external IMU |
+| `SocketBackend` (GPIO) | `/tmp/thejas_gpio.sock` | Motor command output (u32 little-endian) |
 
-### Usage
+### Python Bridges (`tools/`)
+| Bridge | Purpose |
+|--------|---------|
+| `sitl_bridge.py` | Full pipeline: Gazebo `gz topic` CLI ↔ Unix sockets ↔ Emulator |
+| `motor_bridge.py` | Monitor motor commands from `/tmp/thejas_gpio.sock` |
+| `external_imu_proxy.py` | Synthetic IMU server for `/tmp/thejas_spi.sock` |
+
+### Gazebo C++ Plugin (Separate Process)
+| Component | File | Protocol |
+|-----------|------|----------|
+| Plugin | `gazebo/gazebo_thejas_sitl.cpp` | UDP 9002 (IMU out), 9003 (motors in) |
+| World | `gazebo/worlds/iris.world` | Quadcopter with IMU sensor + 4 rotor joints |
+
+### UDP Protocol (Gazebo ↔ Python Bridge)
+| Port | Direction | Payload |
+|------|-----------|---------|
+| 9002 | Gazebo → Bridge | 7×double (56B): timestamp, ax,ay,az, gx,gy,gz |
+| 9003 | Bridge → Gazebo | 4×float (16B): motor commands 0.0-1.0 |
+
+### Usage (Three-Terminal Setup)
 ```bash
 # Terminal 1: Start Gazebo with Iris world
 cd gazebo/build && gzserver ../worlds/iris.world
 
-# Terminal 2: Run emulator with flight controller in Gazebo mode
-./target/release/Thejas32rs programs/flight_controller.elf --gazebo
+# Terminal 2: Run Python bridge (connects Gazebo UDP ↔ Emulator Unix sockets)
+python3 tools/sitl_bridge.py
+
+# Terminal 3: Run emulator with IPC enabled
+./target/release/Thejas32rs programs/flight_controller.elf --ipc
 ```
 
-### Python Bridges (Alternative Unix Socket Architecture)
-- `tools/sitl_bridge.py` - Full bridge: Gazebo CLI ↔ Unix sockets ↔ Emulator
-- `tools/motor_bridge.py` - Motor monitor via `/tmp/thejas_gpio.sock`
-- `tools/external_imu_proxy.py` - Synthetic IMU via `/tmp/thejas_spi.sock`
+### Benefits of IPC Architecture
+1. **Clean Core** - Emulator has zero Gazebo/physics dependencies
+2. **Testability** - Run tests without Gazebo (`--ipc` not required)
+3. **Flexibility** - Swap Python bridges for different simulators (PX4, ArduPilot, etc.)
+4. **Debugging** - `motor_bridge.py` shows motor values in real-time
+5. **Language Agnostic** - External bridges can be Python, C++, Rust, etc.
 
 ### Fixed Issues (2026-09-25)
-- ✅ **GazeboImuBackend bind bug** - Now binds to port 9002 (was ephemeral port 0)
-- ✅ **Conditional Gazebo backend** - `--gazebo` flag enables UDP backends
-- ✅ **Graceful fallback** - Standard mode works without Gazebo running
+- ✅ **System funct12=0x121** - SFENCE.VMA (no-op, no virtual memory)
+- ✅ **CSR funct3=0x4** - Reserved SYSTEM funct3 traps with illegal instruction (cause 2)
+- ✅ **ELF Loading Bug** - PT_LOAD segments overlapping RAM, BSS-only segments (filesz=0)
+- ✅ **IPC Architecture** - Core emulator uses Unix sockets, Gazebo handled by external Python bridges
 
 ## Notes
 - Rust edition 2024, requires rustc ≥ 1.85
 - Cross-compile test programs with `riscv-none-elf-gcc -march=rv32imac_zicsr -mabi=ilp32`
-- Gazebo SITL integration: UDP-based (C++ plugin) + optional Python Unix socket bridges
+- Gazebo SITL integration: External Python bridges via Unix sockets (core emulator is Gazebo-free)
 - Flight controller uses SPI for MPU-6000 IMU + GPIO for motor outputs

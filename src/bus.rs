@@ -33,16 +33,16 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(gazebo: bool) -> Self {
+    pub fn new(enable_ipc: bool) -> Self {
         Self {
             ram: vec![0; RAM_SIZE],
             flash: QspiFlash::new(),
             uart: Uart::new(),
             clint: Clint::new(),
             plic: Plic::new(),
-            gpio: Gpio::new(gazebo),
+            gpio: Gpio::new(enable_ipc),
             timer: Timer::new(),
-            spi: Spi::new(gazebo),
+            spi: Spi::new(enable_ipc),
             i2s: I2s::new(),
             i2c: I2c::new(),
             dma: Dma::new(),

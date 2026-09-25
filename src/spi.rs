@@ -1,4 +1,4 @@
-use crate::gazebo_backend::GazeboImuBackend;
+use crate::ipc::SocketBackend;
 
 pub const SPI_BASE: u32 = 0x1003_0000;
 pub const SPI_SIZE: u32 = 0x1000;
@@ -13,18 +13,18 @@ pub struct Spi {
     pub data_rx: u8,
     pub status: u32,
     pub cs: u32,
-    gazebo: Option<GazeboImuBackend>,
+    pub ipc: Option<SocketBackend>,
 }
 
 impl Spi {
-    pub fn new(gazebo: bool) -> Self {
+    pub fn new(enable_ipc: bool) -> Self {
         Self {
             ctrl: 0,
             data_rx: 0xFF,
             status: 0x01,
             cs: 0xFFFF_FFFF,
-            gazebo: if gazebo {
-                Some(GazeboImuBackend::new().expect("Failed to create Gazebo IMU backend"))
+            ipc: if enable_ipc {
+                Some(SocketBackend::new("/tmp/thejas_spi.sock"))
             } else {
                 None
             },
@@ -50,10 +50,11 @@ impl Spi {
             SPI_DATA_OFFSET => {
                 let cs_state = (self.cs & 0xFF) as u8;
                 let mosi = (val & 0xFF) as u8;
-                if let Some(ref mut gazebo) = self.gazebo {
-                    self.data_rx = gazebo.spi_exchange(cs_state, mosi);
+                if let Some(ref mut ipc) = self.ipc {
+                    self.data_rx = ipc.spi_exchange(cs_state, mosi);
                 } else {
-                    self.data_rx = 0xFF;
+                    // Loopback mode: return mosi + 1 for testing, or 0xFF for pull-up
+                    self.data_rx = mosi.wrapping_add(1);
                 }
                 self.status |= 0x01;
             }

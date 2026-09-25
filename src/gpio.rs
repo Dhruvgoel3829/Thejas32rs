@@ -1,4 +1,4 @@
-use crate::gazebo_backend::GazeboMotorBackend;
+use crate::ipc::SocketBackend;
 
 pub const GPIO_BASE: u32 = 0x1001_0000;
 pub const GPIO_SIZE: u32 = 0x1000;
@@ -13,17 +13,17 @@ pub struct Gpio {
     pub dir: u32,
     pub data: u32,
     pub int_en: u32,
-    gazebo: Option<GazeboMotorBackend>,
+    ipc: Option<SocketBackend>,
 }
 
 impl Gpio {
-    pub fn new(gazebo: bool) -> Self {
+    pub fn new(enable_ipc: bool) -> Self {
         Self {
             dir: 0,
             data: 0,
             int_en: 0,
-            gazebo: if gazebo {
-                Some(GazeboMotorBackend::new().expect("Failed to create Gazebo motor backend"))
+            ipc: if enable_ipc {
+                Some(SocketBackend::new("/tmp/thejas_gpio.sock"))
             } else {
                 None
             },
@@ -44,20 +44,20 @@ impl Gpio {
             GPIO_DIR_OFFSET => self.dir = val,
             GPIO_DATA_OFFSET => {
                 self.data = val;
-                if let Some(ref mut gazebo) = self.gazebo {
-                    gazebo.send_motors(val);
+                if let Some(ref mut ipc) = self.ipc {
+                    ipc.send(&val.to_le_bytes());
                 }
             }
             GPIO_SET_OFFSET => {
                 self.data |= val;
-                if let Some(ref mut gazebo) = self.gazebo {
-                    gazebo.send_motors(self.data);
+                if let Some(ref mut ipc) = self.ipc {
+                    ipc.send(&self.data.to_le_bytes());
                 }
             }
             GPIO_CLEAR_OFFSET => {
                 self.data &= !val;
-                if let Some(ref mut gazebo) = self.gazebo {
-                    gazebo.send_motors(self.data);
+                if let Some(ref mut ipc) = self.ipc {
+                    ipc.send(&self.data.to_le_bytes());
                 }
             }
             GPIO_INT_EN_OFFSET => self.int_en = val,

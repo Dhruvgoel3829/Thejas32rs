@@ -14,7 +14,6 @@ mod uart;
 mod wdt;
 mod qspi;
 mod ipc;
-mod gazebo_backend;
 
 use bus::Bus;
 use clap::Parser;
@@ -48,9 +47,9 @@ struct Cli {
     #[arg(long)]
     gdb_port: Option<u16>,
 
-    /// Enable Gazebo SITL mode (UDP IMU/motor communication)
+    /// Enable IPC mode (Unix sockets for external simulator/sensor bridges)
     #[arg(long)]
-    gazebo: bool,
+    ipc: bool,
 }
 
 struct RawModeGuard;
@@ -70,11 +69,11 @@ impl Drop for RawModeGuard {
 
 fn main() {
     let cli = Cli::parse();
-    let mut bus = Bus::new(cli.gazebo);
+    let mut bus = Bus::new(cli.ipc);
 
     eprintln!("[INFO] Loading ELF: {}", cli.elf);
-    if cli.gazebo {
-        eprintln!("[INFO] Gazebo SITL mode enabled");
+    if cli.ipc {
+        eprintln!("[INFO] IPC mode enabled (Unix sockets: /tmp/thejas_spi.sock, /tmp/thejas_gpio.sock)");
     }
     let entry_point = bus.load_elf(&cli.elf);
     eprintln!("[INFO] Entry point: 0x{:08x}", entry_point);
