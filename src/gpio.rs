@@ -13,16 +13,20 @@ pub struct Gpio {
     pub dir: u32,
     pub data: u32,
     pub int_en: u32,
-    pub gazebo: GazeboMotorBackend,
+    gazebo: Option<GazeboMotorBackend>,
 }
 
 impl Gpio {
-    pub fn new() -> Self {
+    pub fn new(gazebo: bool) -> Self {
         Self {
             dir: 0,
             data: 0,
             int_en: 0,
-            gazebo: GazeboMotorBackend::new().expect("Failed to create Gazebo motor backend"),
+            gazebo: if gazebo {
+                Some(GazeboMotorBackend::new().expect("Failed to create Gazebo motor backend"))
+            } else {
+                None
+            },
         }
     }
 
@@ -40,15 +44,21 @@ impl Gpio {
             GPIO_DIR_OFFSET => self.dir = val,
             GPIO_DATA_OFFSET => {
                 self.data = val;
-                self.gazebo.send_motors(val);
+                if let Some(ref mut gazebo) = self.gazebo {
+                    gazebo.send_motors(val);
+                }
             }
             GPIO_SET_OFFSET => {
                 self.data |= val;
-                self.gazebo.send_motors(self.data);
+                if let Some(ref mut gazebo) = self.gazebo {
+                    gazebo.send_motors(self.data);
+                }
             }
             GPIO_CLEAR_OFFSET => {
                 self.data &= !val;
-                self.gazebo.send_motors(self.data);
+                if let Some(ref mut gazebo) = self.gazebo {
+                    gazebo.send_motors(self.data);
+                }
             }
             GPIO_INT_EN_OFFSET => self.int_en = val,
             _ => {}

@@ -47,6 +47,10 @@ struct Cli {
     /// Enable GDB server on specified TCP port (e.g. 1234)
     #[arg(long)]
     gdb_port: Option<u16>,
+
+    /// Enable Gazebo SITL mode (UDP IMU/motor communication)
+    #[arg(long)]
+    gazebo: bool,
 }
 
 struct RawModeGuard;
@@ -66,9 +70,12 @@ impl Drop for RawModeGuard {
 
 fn main() {
     let cli = Cli::parse();
-    let mut bus = Bus::new();
+    let mut bus = Bus::new(cli.gazebo);
 
     eprintln!("[INFO] Loading ELF: {}", cli.elf);
+    if cli.gazebo {
+        eprintln!("[INFO] Gazebo SITL mode enabled");
+    }
     let entry_point = bus.load_elf(&cli.elf);
     eprintln!("[INFO] Entry point: 0x{:08x}", entry_point);
 

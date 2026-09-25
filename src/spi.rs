@@ -13,17 +13,21 @@ pub struct Spi {
     pub data_rx: u8,
     pub status: u32,
     pub cs: u32,
-    pub gazebo: GazeboImuBackend,
+    gazebo: Option<GazeboImuBackend>,
 }
 
 impl Spi {
-    pub fn new() -> Self {
+    pub fn new(gazebo: bool) -> Self {
         Self {
             ctrl: 0,
             data_rx: 0xFF,
             status: 0x01,
             cs: 0xFFFF_FFFF,
-            gazebo: GazeboImuBackend::new().expect("Failed to create Gazebo IMU backend"),
+            gazebo: if gazebo {
+                Some(GazeboImuBackend::new().expect("Failed to create Gazebo IMU backend"))
+            } else {
+                None
+            },
         }
     }
 
@@ -46,7 +50,11 @@ impl Spi {
             SPI_DATA_OFFSET => {
                 let cs_state = (self.cs & 0xFF) as u8;
                 let mosi = (val & 0xFF) as u8;
-                self.data_rx = self.gazebo.spi_exchange(cs_state, mosi);
+                if let Some(ref mut gazebo) = self.gazebo {
+                    self.data_rx = gazebo.spi_exchange(cs_state, mosi);
+                } else {
+                    self.data_rx = 0xFF;
+                }
                 self.status |= 0x01;
             }
             _ => {}

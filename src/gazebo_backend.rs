@@ -17,7 +17,7 @@ pub struct GazeboImuBackend {
 
 impl GazeboImuBackend {
     pub fn new() -> std::io::Result<Self> {
-        let socket = UdpSocket::bind((GAZEBO_ADDR, 0))?;
+        let socket = UdpSocket::bind((GAZEBO_ADDR, GAZEBO_IMU_PORT))?;
         socket.set_read_timeout(Some(Duration::from_millis(1)))?;
         socket.set_nonblocking(true)?;
         let server_addr: SocketAddr = format!("{}:{}", GAZEBO_ADDR, GAZEBO_IMU_PORT).parse().unwrap();
