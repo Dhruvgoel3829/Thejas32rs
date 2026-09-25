@@ -62,21 +62,30 @@ impl Bus {
                 let memsz = header.p_memsz as usize;
                 let file_data = &buffer[offset..offset + filesz];
 
-                if (0x4000_0000..=0x40FF_FFFF).contains(&vaddr) {
-                    // Flash XIP region
+                let seg_start = vaddr;
+                let seg_end = vaddr + memsz as u32 - 1;
+                let ram_start = RAM_BASE;
+                let ram_end = RAM_BASE + (RAM_SIZE as u32) - 1;
+
+                if seg_end >= ram_start && seg_start <= ram_end {
+                    let load_start = seg_start.max(ram_start);
+                    let load_end = seg_end.min(ram_end);
+                    let load_offset = (load_start - seg_start) as usize;
+                    let load_len = (load_end - load_start + 1) as usize;
+                    let ram_offset = (load_start - RAM_BASE) as usize;
+
+                    if load_len > 0 && filesz > 0 {
+                        let copy_len = load_len.min(filesz - load_offset);
+                        self.ram[ram_offset..ram_offset + copy_len].copy_from_slice(&file_data[load_offset..load_offset + copy_len]);
+                    }
+
+                    let bss_end = (ram_offset + memsz).min(self.ram.len());
+                    if ram_offset + load_len < bss_end {
+                        self.ram[ram_offset + load_len..bss_end].fill(0);
+                    }
+                } else if (0x4000_0000..=0x40FF_FFFF).contains(&vaddr) {
                     let flash_offset = vaddr - FLASH_BASE;
                     self.flash.load_bytes(flash_offset, file_data);
-                } else if (RAM_BASE..=RAM_BASE + (RAM_SIZE as u32) - 1).contains(&vaddr) {
-                    // SRAM region
-                    let ram_offset = (vaddr - RAM_BASE) as usize;
-                    let end = (ram_offset + memsz).min(self.ram.len());
-                    let copy_len = filesz.min(self.ram.len() - ram_offset);
-                    self.ram[ram_offset..ram_offset + copy_len].copy_from_slice(&file_data[..copy_len]);
-
-                    // Zero-fill BSS
-                    if ram_offset + copy_len < end {
-                        self.ram[ram_offset + copy_len..end].fill(0);
-                    }
                 }
             }
         }

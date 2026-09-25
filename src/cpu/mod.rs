@@ -281,6 +281,9 @@ impl Cpu {
                             0x105 => {
                                 // WFI (Wait For Interrupt)
                             }
+                            0x121 => {
+                                // SFENCE.VMA - no-op since no virtual memory support
+                            }
                             _ => unimplemented!("Unsupported system funct12: {:#x}", funct12),
                         }
                     }
@@ -321,6 +324,12 @@ impl Cpu {
                         self.write_reg(inst.rd(), t);
                     }
 
+                    0x4 => {
+                        // Reserved funct3 in SYSTEM opcode - illegal instruction
+                        self.csr.mtval = inst.0;
+                        self.handle_trap(2, self.pc);
+                        return;
+                    }
                     _ => unimplemented!("Unsupported System funct3: {:#x}", funct3),
                 }
             }
