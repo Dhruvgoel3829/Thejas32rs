@@ -206,11 +206,18 @@ public:
             }
             force_world *= ground_effect;
 
-            // Position spring to origin (prevents drift) - weak spring
+            // Position hold to origin (stronger spring + velocity damping)
             ignition::math::Vector3d pos_world = pose.Pos();
-            ignition::math::Vector3d spring_force = -0.5 * ignition::math::Vector3d(pos_world.X(), pos_world.Y(), 0);
+            
+            // Spring force: -k * position (pulls toward origin)
+            double k_pos = 5.0;  // N/m (was 0.5)
+            ignition::math::Vector3d spring_force = -k_pos * ignition::math::Vector3d(pos_world.X(), pos_world.Y(), 0);
+            
+            // Velocity damping: -c * velocity (stops oscillation) - reuse lin_vel_world from line 198
+            double k_vel = 3.0;  // N/(m/s)
+            ignition::math::Vector3d pos_damp_force = -k_vel * ignition::math::Vector3d(lin_vel_world.X(), lin_vel_world.Y(), 0);
 
-            base_link->AddForce(force_world + drag_force + spring_force);
+            base_link->AddForce(force_world + drag_force + spring_force + pos_damp_force);
             base_link->AddTorque(torque_world + damping_torque);
 
             // Debug: print every 100 updates
