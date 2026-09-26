@@ -292,7 +292,7 @@ python3 tools/sitl_bridge.py
 - ✅ **IMU Sensor** - Fixed Gazebo sensor lookup name (`imu_sensor` not `iris::base_link::imu_sensor`)
 - ✅ **Motor Thrust** - Increased to 5N/motor (hover at ~200 throttle = 15.7N > 14.7N weight)
 - ✅ **Yaw Torque** - Fixed formula: (CCW motors - CW motors) = (M2+M3) - (M1+M4)
-- ✅ **Angular Damping** - Roll/pitch -5.0, Yaw -10.0; Linear drag -2.0; Position spring -0.5
+- ✅ **Angular Damping** - Roll/pitch -30.0, Yaw -50.0; Linear drag -10.0; Position spring 10.0 N/m + velocity damping 8.0 N/(m/s)
 - ✅ **Ground Effect** - Up to 30% thrust boost below 1m altitude
 - ✅ **Bridge UDP** - IMU receiver on port 9002, motor forward on port 9003
 - ✅ **Synthetic IMU Fallback** - Auto-switch with warning when Gazebo data unavailable
@@ -303,10 +303,10 @@ python3 tools/sitl_bridge.py
 
 ### Feedback Controller (programs/feedback_controller.c)
 - **Complementary Filter**: 98% gyro + 2% accel for roll/pitch attitude (fixed atan2 approx)
-- **Cascade PID**: Angle (outer) → Rate (inner) for roll/pitch
+- **Cascade PID**: Angle (outer kp 20) → Rate (inner kp 15) for roll/pitch
 - **Altitude PID**: Uses accel Z (target 16384 = 1g hover), throttle clamp 150-240
-- **Yaw Angle Hold**: Angle (outer) → Rate (inner) cascade
-- **Mixer**: X-configuration (M1=RR CW, M2=FR CCW, M3=RL CCW, M4=FL CW)
+- **Yaw Angle Hold**: Angle (outer kp 20) → Rate (inner kp 15) cascade
+- **Mixer**: X-configuration (M1=RR CW, M2=FR CCW, M3=RL CCW, M4=FL CW) with correct yaw signs
 - **Test Sequence**: Step targets at 2000-cycle intervals (roll/pitch ±2°, yaw ±5°)
 - **Telemetry**: Every 20 cycles (attitude, rates, AZ, throttle, motor outputs)
 
