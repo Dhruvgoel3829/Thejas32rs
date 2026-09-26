@@ -151,8 +151,8 @@ int main(void) {
     mpu_write_reg(MPU_REG_GYRO_CONFIG, 0x18);
     mpu_write_reg(MPU_REG_ACCEL_CONFIG, 0x00);
 
-    pid_t roll_pid  = { .kp = 120, .ki = 5, .kd = 40, .integral = 0, .prev_error = 0 };
-    pid_t pitch_pid = { .kp = 120, .ki = 5, .kd = 40, .integral = 0, .prev_error = 0 };
+    pid_t roll_pid  = { .kp = 25, .ki = 2, .kd = 8, .integral = 0, .prev_error = 0 };
+    pid_t pitch_pid = { .kp = 25, .ki = 2, .kd = 8, .integral = 0, .prev_error = 0 };
 
     int target_roll_rate  = 0;
     int target_pitch_rate = 0;
@@ -173,7 +173,7 @@ int main(void) {
         int roll_corr  = pid_update(&roll_pid, target_roll_rate, current_roll_rate);
         int pitch_corr = pid_update(&pitch_pid, target_pitch_rate, current_pitch_rate);
 
-        write_motors(135, roll_corr, pitch_corr, 0);
+        write_motors(200, roll_corr, pitch_corr, 0);
 
         if ((cycle % 20) == 0) {
             uart_puts("Loop #"); print_int(cycle);

@@ -3,20 +3,24 @@ import os
 import time
 import struct
 import threading
-import subprocess
-import re
+import math
 
 SPI_SOCK_PATH  = "/tmp/thejas_spi.sock"
 GPIO_SOCK_PATH = "/tmp/thejas_gpio.sock"
-
-# Topic name published by Gazebo native IMU sensor
-GAZEBO_IMU_TOPIC = "~/iris/base_link/imu_sensor/imu"
+GAZEBO_IMU_PORT = 9002
+GAZEBO_MOTOR_PORT = 9003
 
 physics_lock = threading.Lock()
 latest_imu = {
     "ax": 0, "ay": 0, "az": 16384,
     "gx": 0, "gy": 0, "gz": 0
 }
+
+motor_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+motor_addr = ("127.0.0.1", GAZEBO_MOTOR_PORT)
+
+# Synthetic IMU for testing without Gazebo
+synthetic_tick = 0
 
 def recv_exact(sock, n):
     buf = bytearray()
@@ -41,77 +45,58 @@ def connect_socket(path, name):
         time.sleep(0.05)
 
 # -------------------------------------------------------------
-# 1. Gazebo Topic Ingestion Worker (Zero C++ Plugins)
+# 1. UDP IMU Receiver (from Gazebo plugin on port 9002)
 # -------------------------------------------------------------
-def gazebo_cli_imu_worker():
-    global latest_imu
-    print(f"[GAZEBO-CLI] Subscribing to {GAZEBO_IMU_TOPIC} via gz topic...")
+def udp_imu_receiver():
+    global latest_imu, synthetic_tick
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(("0.0.0.0", GAZEBO_IMU_PORT))
+    sock.settimeout(1.0)
+    print(f"[UDP-IMU] Listening on port {GAZEBO_IMU_PORT} for Gazebo IMU data...")
+    last_gazebo_time = time.time()
 
-    # Wait for Gazebo to actually start and advertise topics
     while True:
         try:
-            topics = subprocess.check_output(["gz", "topic", "-l"], stderr=subprocess.DEVNULL).decode()
-            if "imu" in topics:
-                # Find matching imu topic dynamically if path differs
-                for line in topics.strip().splitlines():
-                    if "imu_sensor/imu" in line:
-                        target_topic = line.strip()
-                        break
-                else:
-                    target_topic = GAZEBO_IMU_TOPIC
-                break
-        except Exception:
-            pass
-        time.sleep(0.5)
-
-    print(f"[GAZEBO-CLI] Streaming active on: {target_topic}")
-
-    proc = subprocess.Popen(
-        ["gz", "topic", "-e", target_topic],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        text=True,
-        bufsize=1
-    )
-
-    rex_accel = re.compile(r"linear_acceleration\s*\{\s*x:\s*([-\d\.e\+]+)\s*y:\s*([-\d\.e\+]+)\s*z:\s*([-\d\.e\+]+)")
-    rex_gyro  = re.compile(r"angular_velocity\s*\{\s*x:\s*([-\d\.e\+]+)\s*y:\s*([-\d\.e\+]+)\s*z:\s*([-\d\.e\+]+)")
-
-    current_chunk = []
-
-    for line in iter(proc.stdout.readline, ''):
-        current_chunk.append(line)
-        if "orientation" in line and len(current_chunk) > 10:
-            block = "".join(current_chunk)
-            current_chunk = []
-
-            m_a = rex_accel.search(block)
-            m_g = rex_gyro.search(block)
-
-            if m_a and m_g:
-                try:
-                    ax_m, ay_m, az_m = float(m_a.group(1)), float(m_a.group(2)), float(m_a.group(3))
-                    gx_r, gy_r, gz_r = float(m_g.group(1)), float(m_g.group(2)), float(m_g.group(3))
-
-                    # Convert SI units to MPU-6000 register LSBs:
-                    # 1g = 9.80665 m/s^2 = 16384 LSB (at +/- 2g range)
-                    # 1 rad/s = 57.2958 deg/s. At +/- 2000 dps: 16.4 LSB/dps
-                    with physics_lock:
-                        latest_imu["ax"] = int((ax_m / 9.80665) * 16384.0)
-                        latest_imu["ay"] = int((ay_m / 9.80665) * 16384.0)
-                        latest_imu["az"] = int((az_m / 9.80665) * 16384.0)
-
-                        latest_imu["gx"] = int((gx_r * 57.2958) * 16.4)
-                        latest_imu["gy"] = int((gy_r * 57.2958) * 16.4)
-                        latest_imu["gz"] = int((gz_r * 57.2958) * 16.4)
-                except ValueError:
-                    pass
+            data, addr = sock.recvfrom(1024)
+            if len(data) == 56:  # 7 doubles = 56 bytes
+                timestamp, ax, ay, az, gx, gy, gz = struct.unpack("7d", data)
+                
+                # Convert SI units to MPU-6000 register LSBs
+                with physics_lock:
+                    latest_imu["ax"] = int((ax / 9.80665) * 16384.0)
+                    latest_imu["ay"] = int((ay / 9.80665) * 16384.0)
+                    latest_imu["az"] = int((az / 9.80665) * 16384.0)
+                    latest_imu["gx"] = int((gx * 57.2958) * 16.4)
+                    latest_imu["gy"] = int((gy * 57.2958) * 16.4)
+                    latest_imu["gz"] = int((gz * 57.2958) * 16.4)
+                last_gazebo_time = time.time()
+                # print(f"[UDP-IMU] REAL Gazebo: gx={latest_imu['gx']} gy={latest_imu['gy']} gz={latest_imu['gz']}")
+        except socket.timeout:
+            # Check if we haven't received Gazebo data for a while
+            if time.time() - last_gazebo_time > 2.0:
+                print("[UDP-IMU] WARNING: No Gazebo data for 2s, using synthetic!")
+                with physics_lock:
+                    phase = (synthetic_tick % 360) * (math.pi / 180.0)
+                    synthetic_tick += 1
+                    latest_imu["ax"] = int(math.sin(phase) * 800)
+                    latest_imu["ay"] = 0
+                    latest_imu["az"] = 16384 - int(abs(math.sin(phase)) * 100)
+                    latest_imu["gx"] = int(math.sin(phase) * 410)
+                    latest_imu["gy"] = int(math.cos(phase) * 205)
+                    latest_imu["gz"] = 0
+            else:
+                # Just keep last known good values
+                pass
+        except Exception as e:
+            print(f"[UDP-IMU] Error: {e}")
 
 # -------------------------------------------------------------
 # 2. SPI Socket Server (Virtual MPU-6000 Register Machine)
 # -------------------------------------------------------------
 def spi_imu_server():
+    print("[SPI-SERVER] Starting...")
     client = connect_socket(SPI_SOCK_PATH, "IMU")
+    print("[SPI-SERVER] Connected, entering main loop")
     selected = False
     current_reg = 0
     is_read = False
@@ -122,6 +107,7 @@ def spi_imu_server():
             hdr = recv_exact(client, 1)
             if not hdr: break
             pkt_type = hdr[0]
+            print(f"[SPI-SERVER] pkt_type=0x{pkt_type:02X}")
 
             if pkt_type == 0x01: # CS Line Transition
                 cs_payload = recv_exact(client, 1)
@@ -180,7 +166,7 @@ def spi_imu_server():
         client.close()
 
 # -------------------------------------------------------------
-# 3. Motor Actuation (Applies Forces or Prints PWM Outputs)
+# 3. Motor Actuation (Forward to Gazebo plugin on UDP 9003)
 # -------------------------------------------------------------
 def motor_worker():
     client = connect_socket(GPIO_SOCK_PATH, "MOTOR")
@@ -194,17 +180,22 @@ def motor_worker():
                 break
             m1, m2, m3, m4 = struct.unpack("4B", payload)
             print(f"  {m1:3d} ({(m1/255)*100:4.1f}%) | {m2:3d} ({(m2/255)*100:4.1f}%) | {m3:3d} ({(m3/255)*100:4.1f}%) | {m4:3d} ({(m4/255)*100:4.1f}%)")
+
+            motor_floats = struct.pack("4f", m1/255.0, m2/255.0, m3/255.0, m4/255.0)
+            motor_sock.sendto(motor_floats, motor_addr)
+
     except (BrokenPipeError, ConnectionResetError):
         pass
     finally:
         client.close()
+        motor_sock.close()
 
 def main():
-    t_gz = threading.Thread(target=gazebo_cli_imu_worker, daemon=True)
+    t_udp = threading.Thread(target=udp_imu_receiver, daemon=True)
     t_spi = threading.Thread(target=spi_imu_server, daemon=True)
     t_motor = threading.Thread(target=motor_worker, daemon=True)
 
-    t_gz.start()
+    t_udp.start()
     t_spi.start()
     t_motor.start()
 
