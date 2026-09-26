@@ -60,7 +60,9 @@ Cycle-accurate **RV32IM** RISC-V SoC emulator in Rust implementing the custom **
 - `timer_test.c` - Timer interrupt test
 - `plic_test.c` - PLIC interrupt test
 - `scheduler_test.c` + `scheduler_asm.s` - Preemptive scheduler with trap entry
-- `flight_controller.c` - SPI IMU + PID control loop
+- `flight_controller.c` - SPI IMU + PID control loop (simple rate PID)
+- `feedback_controller.c` - Full cascade PID (angle→rate) + complementary filter
+- `drone_test.c` - System test: IMU, motor sequence, hover ramp
 - `dma_test.c`, `i2c_test.c`, `wdt_test.c`, `pmp_test.c`, `mixer_test.c`, `imu_test.c`, `comprehensive_test.c`, `xip_test.c`, `peripherals_test.c`, `echo.c`, `shell.c`
 
 ### Build & Run
@@ -208,7 +210,7 @@ loop {
 2. Add unit tests for CPU instructions and peripherals
 3. Complete remaining unimplemented instructions (FPU loads/stores, some MUL/DIV/REM, AMO variants)
 4. Consider FPU if RV32IMF desired
-5. Build and test Gazebo plugin (`gazebo/build/`) with `gzserver`
+5. ✅ **Build and test Gazebo plugin** (`gazebo/build/`) with `gzserver` — DONE
 
 ## IPC-Based External Integration (AI-in-the-Loop Drone Firmware Development)
 
@@ -260,7 +262,7 @@ loop {
 | Port | Direction | Payload |
 |------|-----------|---------|
 | 9002 | Gazebo → Bridge | 7×double (56B): timestamp, ax,ay,az, gx,gy,gz |
-| 9003 | Bridge → Gazebo | 4×float (16B): motor commands 0.0-1.0 |
+| 9003 | Bridge → Gazebo | 4×float (16B): motor commands 0.0-1.0 (normalized from GPIO 0-255) |
 
 ### Usage (Three-Terminal Setup)
 ```bash
@@ -282,10 +284,31 @@ python3 tools/sitl_bridge.py
 5. **Language Agnostic** - External bridges can be Python, C++, Rust, etc.
 
 ### Fixed Issues (2026-09-25)
-- ✅ **System funct12=0x121** - SFENCE.VMA (no-op, no virtual memory)
-- ✅ **CSR funct3=0x4** - Reserved SYSTEM funct3 traps with illegal instruction (cause 2)
-- ✅ **ELF Loading Bug** - PT_LOAD segments overlapping RAM, BSS-only segments (filesz=0)
+- ✅ **System funct12=0x121** - SFENCE.VMA (implemented as no-op, no virtual memory)
+- ✅ **CSR funct3=0x4** - Reserved SYSTEM funct3 now traps with illegal instruction (cause 2)
+- ✅ **ELF Loading Bug** - Fixed PT_LOAD segment handling for segments overlapping RAM (including BSS-only segments with filesz=0). All test programs now load correctly.
 - ✅ **IPC Architecture** - Core emulator uses Unix sockets, Gazebo handled by external Python bridges
+- ✅ **Gazebo SITL Link** - Python bridge forwards motor commands (UDP 9003), Gazebo plugin applies forces/torques to base_link for actual flight physics
+- ✅ **IMU Sensor** - Fixed Gazebo sensor lookup name (`imu_sensor` not `iris::base_link::imu_sensor`)
+- ✅ **Motor Thrust** - Increased to 5N/motor (hover at ~200 throttle = 15.7N > 14.7N weight)
+- ✅ **Yaw Torque** - Fixed formula: (CCW motors - CW motors) = (M2+M3) - (M1+M4)
+- ✅ **Angular Damping** - Roll/pitch -5.0, Yaw -10.0; Linear drag -2.0; Position spring -0.5
+- ✅ **Ground Effect** - Up to 30% thrust boost below 1m altitude
+- ✅ **Bridge UDP** - IMU receiver on port 9002, motor forward on port 9003
+- ✅ **Synthetic IMU Fallback** - Auto-switch with warning when Gazebo data unavailable
+- ✅ **Altitude Hold** - Accel Z PID (target 1g = 16384 LSB), throttle clamp 150-240
+- ✅ **Yaw Angle Control** - Cascade angle→rate PID (kp 15, ki 1, kd 6)
+- ✅ **Position Hold** - Spring 5.0 N/m + velocity damping 3.0 N/(m/s) to origin
+- ✅ **Motor Clamping** - 0-255 range enforced in write_motors()
+
+### Feedback Controller (programs/feedback_controller.c)
+- **Complementary Filter**: 98% gyro + 2% accel for roll/pitch attitude (fixed atan2 approx)
+- **Cascade PID**: Angle (outer) → Rate (inner) for roll/pitch
+- **Altitude PID**: Uses accel Z (target 16384 = 1g hover), throttle clamp 150-240
+- **Yaw Angle Hold**: Angle (outer) → Rate (inner) cascade
+- **Mixer**: X-configuration (M1=RR CW, M2=FR CCW, M3=RL CCW, M4=FL CW)
+- **Test Sequence**: Step targets at 2000-cycle intervals (roll/pitch ±2°, yaw ±5°)
+- **Telemetry**: Every 20 cycles (attitude, rates, AZ, throttle, motor outputs)
 
 ## Notes
 - Rust edition 2024, requires rustc ≥ 1.85

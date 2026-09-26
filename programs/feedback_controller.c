@@ -244,35 +244,34 @@ int main(void) {
         uart_puts("ERROR: MPU not responding correctly! Using synthetic data.\n");
     }
     
-    // Altitude PID (using accel Z as proxy for vertical position)
-    pid_t alt_pid;
-    pid_init(&alt_pid, 8, 2, 5, 1000);
-    int target_alt = 16384;  // Hover at 1g (16384 LSB)
-    int alt_throttle = 190;  // Base hover throttle
-    
-    // PID controllers
+    // PID controllers (tuned for MPU-6000 units - REDUCED for stability)
+    // Roll/Pitch rate PID (target = 0 for stabilization)
     pid_t roll_rate_pid;
     pid_t pitch_rate_pid;
     pid_init(&roll_rate_pid, 15, 1, 5, 1000);
     pid_init(&pitch_rate_pid, 15, 1, 5, 1000);
     
+    // Roll/Pitch angle PID (outer loop) - MORE GENTLE
     pid_t roll_angle_pid;
     pid_t pitch_angle_pid;
     pid_init(&roll_angle_pid, 20, 0, 10, 500);
     pid_init(&pitch_angle_pid, 20, 0, 10, 500);
     
+    // Yaw rate PID
     pid_t yaw_rate_pid;
-    pid_init(&yaw_rate_pid, 15, 1, 6, 500);  // Stronger yaw
+    pid_init(&yaw_rate_pid, 12, 0, 4, 500);
     
     attitude_t att;
     attitude_init(&att);
     
     imu_raw_t imu;
     
+    int base_throttle = 210;  // Hover throttle - increased
     int target_roll = 0;
     int target_pitch = 0;
-    int target_yaw = 0;  // Yaw angle hold (not rate)
+    int target_yaw_rate = 0;
     
+    // Synthetic IMU for testing when SPI fails
     int synth_tick = 0;
     
     uart_puts("[FC] Starting control loop...\n\n");
@@ -299,29 +298,20 @@ int main(void) {
         // Update attitude (dt ~ 1ms per loop)
         attitude_update(&att, &imu, 1);
         
-        // Altitude PID (using accel Z as altitude proxy)
-        // Target: 16384 = 1g (hover). Error > 0 means too low -> increase throttle
-        int alt_corr = pid_update(&alt_pid, target_alt, imu.az);
-        int throttle = alt_throttle + alt_corr;
-        throttle = clamp(throttle, 150, 240);  // Limit throttle range
-        
         // Cascade PID: Angle -> Rate -> Motor
         int roll_rate_target  = pid_update(&roll_angle_pid,  target_roll,  att.roll);
         int pitch_rate_target = pid_update(&pitch_angle_pid, target_pitch, att.pitch);
         
         int roll_corr  = pid_update(&roll_rate_pid,  roll_rate_target,  att.roll_rate);
         int pitch_corr = pid_update(&pitch_rate_pid, pitch_rate_target, att.pitch_rate);
-        
-        // Yaw angle hold (outer) -> Rate (inner)
-        int yaw_rate_target = pid_update(&yaw_rate_pid, target_yaw, att.yaw);
-        int yaw_corr   = pid_update(&yaw_rate_pid, yaw_rate_target, att.yaw_rate);
+        int yaw_corr   = pid_update(&yaw_rate_pid,   target_yaw_rate,   att.yaw_rate);
         
         // Mixer (X configuration)
         // M1=RR(CW), M2=FR(CCW), M3=RL(CCW), M4=FL(CW)
-        int m1 = throttle - pitch_corr - roll_corr - yaw_corr;
-        int m2 = throttle + pitch_corr - roll_corr + yaw_corr;
-        int m3 = throttle + pitch_corr + roll_corr - yaw_corr;
-        int m4 = throttle - pitch_corr + roll_corr + yaw_corr;
+        int m1 = base_throttle - pitch_corr - roll_corr - yaw_corr;
+        int m2 = base_throttle + pitch_corr - roll_corr + yaw_corr;
+        int m3 = base_throttle + pitch_corr + roll_corr - yaw_corr;
+        int m4 = base_throttle - pitch_corr + roll_corr + yaw_corr;
         
         write_motors(m1, m2, m3, m4);
         
@@ -334,8 +324,6 @@ int main(void) {
             uart_puts(" | Rrate:"); print_int(att.roll_rate);
             uart_puts(" Prate:"); print_int(att.pitch_rate);
             uart_puts(" Yrate:"); print_int(att.yaw_rate);
-            uart_puts(" | AZ:"); print_int(imu.az);
-            uart_puts(" Throt:"); print_int(throttle);
             uart_puts(" | M1:"); print_int(m1);
             uart_puts(" M2:"); print_int(m2);
             uart_puts(" M3:"); print_int(m3);
@@ -350,9 +338,9 @@ int main(void) {
         if (cycle == 8000) { target_pitch = 200; uart_puts("\n>>> STEP: Pitch +2deg\n"); }
         if (cycle == 10000) { target_pitch = -200; uart_puts("\n>>> STEP: Pitch -2deg\n"); }
         if (cycle == 12000) { target_pitch = 0;    uart_puts("\n>>> STEP: Pitch 0deg\n"); }
-        if (cycle == 14000) { target_yaw = 500; uart_puts("\n>>> STEP: Yaw +5deg\n"); }
-        if (cycle == 16000) { target_yaw = -500; uart_puts("\n>>> STEP: Yaw -5deg\n"); }
-        if (cycle == 18000) { target_yaw = 0;    uart_puts("\n>>> STEP: Yaw 0deg\n"); }
+        if (cycle == 14000) { target_yaw_rate = 100; uart_puts("\n>>> STEP: Yaw rate +10dps\n"); }
+        if (cycle == 16000) { target_yaw_rate = -100; uart_puts("\n>>> STEP: Yaw rate -10dps\n"); }
+        if (cycle == 18000) { target_yaw_rate = 0;    uart_puts("\n>>> STEP: Yaw rate 0\n"); }
         
         for (volatile int d = 0; d < 8000; d++);  // ~1ms delay
     }
