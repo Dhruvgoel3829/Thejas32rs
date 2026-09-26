@@ -189,14 +189,14 @@ public:
             // Angular velocity damping for stability - stronger on yaw
             ignition::math::Vector3d ang_vel_world = base_link->WorldAngularVel();
             ignition::math::Vector3d damping_torque = ignition::math::Vector3d(
-                -5.0 * ang_vel_world.X(),
-                -5.0 * ang_vel_world.Y(),
-                -10.0 * ang_vel_world.Z()  // Strong yaw damping
+                -10.0 * ang_vel_world.X(),
+                -10.0 * ang_vel_world.Y(),
+                -20.0 * ang_vel_world.Z()  // Strong yaw damping
             );
 
             // Linear velocity damping (drag) - stronger to prevent drift
             ignition::math::Vector3d lin_vel_world = base_link->WorldLinearVel();
-            ignition::math::Vector3d drag_force = -2.0 * lin_vel_world;
+            ignition::math::Vector3d drag_force = -4.0 * lin_vel_world;
 
             // Ground effect: extra lift near ground
             double height = pose.Pos().Z();
