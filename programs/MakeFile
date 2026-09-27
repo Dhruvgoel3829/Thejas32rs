@@ -6,7 +6,7 @@ OBJCOPY := $(CROSS_COMPILE)objcopy
 CFLAGS  := -march=rv32imac_zicsr -mabi=ilp32 -O2 -g -nostdlib -fno-builtin -Wall
 LDFLAGS := -T link.ld
 
-TARGETS := atomic_test.elf compressed_test.elf dma_test.elf scheduler_test.elf flight_controller.elf
+TARGETS := atomic_test.elf compressed_test.elf dma_test.elf scheduler_test.elf flight_controller.elf drone_peripheral_test.elf timer_poll_test.elf
 
 all: $(TARGETS)
 
@@ -24,6 +24,12 @@ scheduler_test.elf: scheduler_asm.s scheduler_test.c link.ld
 
 flight_controller.elf: crt0.s flight_controller.c link.ld
 	$(CC) $(CFLAGS) $(LDFLAGS) crt0.s flight_controller.c -o $@
+
+drone_peripheral_test.elf: crt0.s drone_peripheral_test.c link.ld
+	$(CC) $(CFLAGS) $(LDFLAGS) crt0.s drone_peripheral_test.c -o $@
+
+timer_poll_test.elf: crt0.s timer_poll_test.c link.ld
+	$(CC) $(CFLAGS) $(LDFLAGS) crt0.s timer_poll_test.c -o $@
 
 clean:
 	rm -f $(TARGETS) *.o *.dump

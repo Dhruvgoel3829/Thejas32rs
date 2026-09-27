@@ -64,6 +64,7 @@ Cycle-accurate **RV32IM** RISC-V SoC emulator in Rust implementing the custom **
 - `flight_controller.c` - SPI IMU + PID control loop (simple rate PID)
 - `feedback_controller.c` - Full cascade PID (angle→rate) + complementary filter
 - `drone_test.c` - System test: IMU, motor sequence, hover ramp
+- `drone_peripheral_test.c` - **Comprehensive test of all 8 Gazebo-exposed peripherals**
 - `dma_test.c`, `i2c_test.c`, `wdt_test.c`, `pmp_test.c`, `mixer_test.c`, `imu_test.c`, `comprehensive_test.c`, `xip_test.c`, `peripherals_test.c`, `echo.c`, `shell.c`
 
 ### Build & Run
