@@ -114,9 +114,9 @@ impl Pmp {
             }
             PmpMode::Napot => {
                 let a = self.addr[i];
-                let trailing_ones = (!a).trailing_zeros();
-                let size = 1u64 << (trailing_ones + 3);
-                let base = ((a as u64 & !((1u64 << trailing_ones) - 1)) << 2) as u32;
+                let trailing_zeros = a.trailing_zeros();
+                let size = 1u64 << (trailing_zeros + 3);
+                let base = ((a as u64 & !((1u64 << trailing_zeros) - 1)) << 2) as u32;
                 (base, base.wrapping_add(size as u32))
             }
         }
@@ -159,5 +159,231 @@ impl Pmp {
         } else {
             Err(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pmp_new() {
+        let pmp = Pmp::new();
+        for i in 0..16 {
+            assert_eq!(pmp.cfg[i].read, false);
+            assert_eq!(pmp.cfg[i].write, false);
+            assert_eq!(pmp.cfg[i].exec, false);
+            assert_eq!(pmp.cfg[i].mode, PmpMode::Off);
+            assert_eq!(pmp.cfg[i].locked, false);
+            assert_eq!(pmp.addr[i], 0);
+        }
+    }
+
+    #[test]
+    fn test_pmp_config_from_to_u8() {
+        let cfg = PmpConfig {
+            read: true,
+            write: true,
+            exec: true,
+            mode: PmpMode::Napot,
+            locked: true,
+        };
+        let byte = cfg.to_u8();
+        assert_eq!(byte & 0x01, 0x01);
+        assert_eq!(byte & 0x02, 0x02);
+        assert_eq!(byte & 0x04, 0x04);
+        assert_eq!((byte >> 3) & 0x3, 0x3);
+        assert_eq!(byte & 0x80, 0x80);
+
+        let cfg2 = PmpConfig::from_u8(byte);
+        assert_eq!(cfg2.read, true);
+        assert_eq!(cfg2.write, true);
+        assert_eq!(cfg2.exec, true);
+        assert_eq!(cfg2.mode, PmpMode::Napot);
+        assert_eq!(cfg2.locked, true);
+    }
+
+    #[test]
+    fn test_pmp_mode_from_u8() {
+        assert_eq!(PmpMode::from(0), PmpMode::Off);
+        assert_eq!(PmpMode::from(1), PmpMode::Tor);
+        assert_eq!(PmpMode::from(2), PmpMode::Na4);
+        assert_eq!(PmpMode::from(3), PmpMode::Napot);
+    }
+
+#[test]
+    fn test_pmp_read_write_cfg() {
+        let mut pmp = Pmp::new();
+        // Valid PMP config bytes (no reserved bits set):
+        // cfg[0]: R=1,W=1,X=1,mode=Napot(3),L=0 -> 0x0F
+        // cfg[1]: R=1,W=1,X=0,mode=Tor(1),L=0 -> 0x0B
+        // cfg[2]: R=1,W=0,X=1,mode=Na4(2),L=0 -> 0x15
+        // cfg[3]: R=0,W=0,X=0,mode=Off(0),L=1 -> 0x80
+        let val = u32::from_le_bytes([0x0F, 0x0B, 0x15, 0x80]);
+        pmp.write_cfg(0, val);
+        let read_val = pmp.read_cfg(0);
+        assert_eq!(read_val, val);
+        
+        assert_eq!(pmp.cfg[0].to_u8(), 0x0F);
+        assert_eq!(pmp.cfg[1].to_u8(), 0x0B);
+        assert_eq!(pmp.cfg[2].to_u8(), 0x15);
+        assert_eq!(pmp.cfg[3].to_u8(), 0x80);
+    }
+
+    #[test]
+    fn test_pmp_locked_config_not_writable() {
+        let mut pmp = Pmp::new();
+        pmp.cfg[0] = PmpConfig {
+            read: true,
+            write: false,
+            exec: false,
+            mode: PmpMode::Tor,
+            locked: true,
+        };
+        pmp.write_cfg(0, 0x00_00_00_FF);
+        assert_eq!(pmp.cfg[0].locked, true);
+        assert_eq!(pmp.cfg[0].read, true);
+        assert_eq!(pmp.cfg[1].to_u8(), 0x00);
+    }
+
+    #[test]
+    fn test_pmp_read_write_addr() {
+        let mut pmp = Pmp::new();
+        pmp.write_addr(0, 0x1000);
+        assert_eq!(pmp.read_addr(0), 0x1000);
+        pmp.write_addr(15, 0x8000_0000);
+        assert_eq!(pmp.read_addr(15), 0x8000_0000);
+        assert_eq!(pmp.read_addr(16), 0);
+    }
+
+    #[test]
+    fn test_pmp_locked_addr_not_writable() {
+        let mut pmp = Pmp::new();
+        pmp.cfg[0].locked = true;
+        pmp.write_addr(0, 0x1000);
+        assert_eq!(pmp.read_addr(0), 0);
+        pmp.write_addr(1, 0x2000);
+        assert_eq!(pmp.read_addr(1), 0x2000);
+    }
+
+    #[test]
+    fn test_pmp_get_range_tor() {
+        let mut pmp = Pmp::new();
+        pmp.cfg[0].mode = PmpMode::Tor;
+        pmp.addr[0] = 0x1000;
+        let (start, end) = pmp.get_range(0);
+        assert_eq!(start, 0);
+        assert_eq!(end, 0x4000);
+        pmp.cfg[1].mode = PmpMode::Tor;
+        pmp.addr[1] = 0x2000;
+        let (start, end) = pmp.get_range(1);
+        assert_eq!(start, 0x4000);
+        assert_eq!(end, 0x8000);
+    }
+
+    #[test]
+    fn test_pmp_get_range_na4() {
+        let mut pmp = Pmp::new();
+        pmp.cfg[0].mode = PmpMode::Na4;
+        pmp.addr[0] = 0x1000;
+        let (start, end) = pmp.get_range(0);
+        assert_eq!(start, 0x4000);
+        assert_eq!(end, 0x4004);
+    }
+
+    #[test]
+    fn test_pmp_get_range_napot() {
+        let mut pmp = Pmp::new();
+        pmp.cfg[0].mode = PmpMode::Napot;
+        pmp.addr[0] = 0x1000;
+        let (start, end) = pmp.get_range(0);
+        assert_eq!(start, 0x4000);
+        assert_eq!(end, 0xC000);
+    }
+
+    #[test]
+    fn test_pmp_check_access_off() {
+        let pmp = Pmp::new();
+        assert!(pmp.check_access(0x1000, 4, PmpAccessType::Read, 3).is_ok());
+        assert!(pmp.check_access(0x1000, 4, PmpAccessType::Write, 3).is_ok());
+        assert!(pmp.check_access(0x1000, 4, PmpAccessType::Execute, 3).is_ok());
+    }
+
+    #[test]
+    fn test_pmp_check_access_m_mode_unlocked() {
+        let mut pmp = Pmp::new();
+        pmp.cfg[0].mode = PmpMode::Tor;
+        pmp.cfg[0].read = false;
+        pmp.cfg[0].write = false;
+        pmp.cfg[0].exec = false;
+        pmp.cfg[0].locked = false;
+        pmp.addr[0] = 0x1000;
+        assert!(pmp.check_access(0x2000, 4, PmpAccessType::Read, 3).is_ok());
+        assert!(pmp.check_access(0x2000, 4, PmpAccessType::Write, 3).is_ok());
+        assert!(pmp.check_access(0x2000, 4, PmpAccessType::Execute, 3).is_ok());
+    }
+
+    #[test]
+    fn test_pmp_check_access_m_mode_locked() {
+        let mut pmp = Pmp::new();
+        pmp.cfg[0].mode = PmpMode::Tor;
+        pmp.cfg[0].read = true;
+        pmp.cfg[0].write = false;
+        pmp.cfg[0].exec = false;
+        pmp.cfg[0].locked = true;
+        pmp.addr[0] = 0x1000;
+        assert!(pmp.check_access(0x2000, 4, PmpAccessType::Read, 3).is_ok());
+        assert!(pmp.check_access(0x2000, 4, PmpAccessType::Write, 3).is_err());
+        assert!(pmp.check_access(0x2000, 4, PmpAccessType::Execute, 3).is_err());
+    }
+
+    #[test]
+    fn test_pmp_check_access_u_mode() {
+        let mut pmp = Pmp::new();
+        pmp.cfg[0].mode = PmpMode::Tor;
+        pmp.cfg[0].read = true;
+        pmp.cfg[0].write = true;
+        pmp.cfg[0].exec = true;
+        pmp.cfg[0].locked = false;
+        pmp.addr[0] = 0x1000;
+        assert!(pmp.check_access(0x8000, 4, PmpAccessType::Read, 0).is_err());
+        assert!(pmp.check_access(0x2000, 4, PmpAccessType::Read, 0).is_ok());
+        assert!(pmp.check_access(0x2000, 4, PmpAccessType::Write, 0).is_ok());
+        assert!(pmp.check_access(0x2000, 4, PmpAccessType::Execute, 0).is_ok());
+        pmp.cfg[0].write = false;
+        assert!(pmp.check_access(0x2000, 4, PmpAccessType::Write, 0).is_err());
+    }
+
+    #[test]
+    fn test_pmp_check_access_napot() {
+        let mut pmp = Pmp::new();
+        pmp.cfg[0].mode = PmpMode::Napot;
+        pmp.cfg[0].read = true;
+        pmp.cfg[0].write = true;
+        pmp.cfg[0].exec = true;
+        pmp.cfg[0].locked = true;
+        pmp.addr[0] = 0x1000;
+        assert!(pmp.check_access(0x5000, 4, PmpAccessType::Read, 0).is_ok());
+        assert!(pmp.check_access(0xB000, 4, PmpAccessType::Write, 0).is_ok());
+        assert!(pmp.check_access(0x3000, 4, PmpAccessType::Read, 0).is_err());
+        assert!(pmp.check_access(0xC000, 4, PmpAccessType::Read, 0).is_err());
+    }
+
+    #[test]
+    fn test_pmp_check_access_crosses_boundary() {
+        let mut pmp = Pmp::new();
+        pmp.cfg[0].mode = PmpMode::Tor;
+        pmp.cfg[0].read = true;
+        pmp.cfg[0].write = true;
+        pmp.cfg[0].exec = true;
+        pmp.cfg[0].locked = true;
+        pmp.addr[0] = 0x1000;
+        // Range is [0, 0x4000)
+        // 0x3FFC + 4 = 0x4000 (end of range, valid - covers 0x3FFC..0x3FFF)
+        assert!(pmp.check_access(0x3FFC, 4, PmpAccessType::Read, 0).is_ok());
+        // 0x3FFD + 4 = 0x4001 (crosses boundary, invalid)
+        assert!(pmp.check_access(0x3FFD, 4, PmpAccessType::Read, 0).is_err());
+        // 0x3FF8 + 4 = 0x3FFC (well within range)
+        assert!(pmp.check_access(0x3FF8, 4, PmpAccessType::Read, 0).is_ok());
     }
 }

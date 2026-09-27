@@ -19,6 +19,7 @@ pub struct Wdt {
     pub status: u32,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum WdtAction {
     None,
     Interrupt,
@@ -93,5 +94,125 @@ impl Wdt {
         } else {
             WdtAction::Interrupt
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_wdt_new() {
+        let wdt = Wdt::new();
+        assert_eq!(wdt.ctrl, 0);
+        assert_eq!(wdt.count, 0xFFFF_FFFF);
+        assert_eq!(wdt.reload, 0xFFFF_FFFF);
+        assert_eq!(wdt.status, 0);
+    }
+
+    #[test]
+    fn test_wdt_disabled() {
+        let mut wdt = Wdt::new();
+        // Disabled by default
+        assert_eq!(wdt.tick(), WdtAction::None);
+        // Count should NOT change when disabled
+        assert_eq!(wdt.count, 0xFFFF_FFFF);
+        assert_eq!(wdt.status, 0);
+    }
+
+    #[test]
+    fn test_wdt_enabled_countdown() {
+        let mut wdt = Wdt::new();
+        wdt.ctrl = 0x01; // Enable
+        wdt.reload = 5;
+        wdt.count = 5;
+        
+        for i in (1..=5).rev() {
+            assert_eq!(wdt.tick(), WdtAction::None);
+            assert_eq!(wdt.count, i - 1);
+        }
+    }
+
+    #[test]
+    fn test_wdt_timeout_interrupt() {
+        let mut wdt = Wdt::new();
+        wdt.ctrl = 0x01; // Enable, no reset
+        wdt.reload = 2;
+        wdt.count = 2;
+        
+        assert_eq!(wdt.tick(), WdtAction::None); // count=1
+        assert_eq!(wdt.tick(), WdtAction::None); // count=0
+        assert_eq!(wdt.tick(), WdtAction::Interrupt); // timeout!
+        
+        assert_eq!(wdt.status & 0x01, 0x01); // Timeout flag set
+        assert_eq!(wdt.count, 2); // Auto-reloaded
+    }
+
+    #[test]
+    fn test_wdt_timeout_reset() {
+        let mut wdt = Wdt::new();
+        wdt.ctrl = 0x03; // Enable + Reset enable
+        wdt.reload = 1;
+        wdt.count = 1;
+        
+        assert_eq!(wdt.tick(), WdtAction::None); // count=0
+        assert_eq!(wdt.tick(), WdtAction::SystemReset); // timeout -> reset
+        
+        assert_eq!(wdt.status & 0x01, 0x01);
+        assert_eq!(wdt.count, 1); // Auto-reloaded
+    }
+
+    #[test]
+    fn test_wdt_feed() {
+        let mut wdt = Wdt::new();
+        wdt.ctrl = 0x01;
+        wdt.reload = 100;
+        wdt.count = 50;
+        
+        // Feed with key 1
+        wdt.write_u32(WDT_FEED_OFFSET, WDT_FEED_KEY_1);
+        assert_eq!(wdt.count, 100); // Reloaded
+        
+        wdt.count = 25;
+        wdt.write_u32(WDT_FEED_OFFSET, WDT_FEED_KEY_2);
+        assert_eq!(wdt.count, 100); // Reloaded
+        
+        // Wrong key should not feed
+        wdt.count = 10;
+        wdt.write_u32(WDT_FEED_OFFSET, 0x1234);
+        assert_eq!(wdt.count, 10); // Unchanged
+    }
+
+    #[test]
+    fn test_wdt_status_w1c() {
+        let mut wdt = Wdt::new();
+        wdt.status |= 0x01; // Set timeout flag
+        assert_eq!(wdt.read_u32(WDT_STATUS_OFFSET) & 0x01, 0x01);
+        
+        // Write 1 to clear
+        wdt.write_u32(WDT_STATUS_OFFSET, 0x01);
+        assert_eq!(wdt.read_u32(WDT_STATUS_OFFSET) & 0x01, 0x00);
+    }
+
+    #[test]
+    fn test_wdt_registers() {
+        let mut wdt = Wdt::new();
+        
+        wdt.write_u32(WDT_CTRL_OFFSET, 0x1234);
+        assert_eq!(wdt.read_u32(WDT_CTRL_OFFSET), 0x1234);
+        
+        wdt.write_u32(WDT_COUNT_OFFSET, 0x5678);
+        assert_eq!(wdt.read_u32(WDT_COUNT_OFFSET), 0x5678);
+        
+        wdt.write_u32(WDT_RELOAD_OFFSET, 0x9ABC);
+        assert_eq!(wdt.read_u32(WDT_RELOAD_OFFSET), 0x9ABC);
+    }
+
+    #[test]
+    fn test_wdt_unknown_offset() {
+        let mut wdt = Wdt::new();
+        assert_eq!(wdt.read_u32(0x100), 0);
+        wdt.write_u32(0x100, 0xFF);
+        // Should not panic
     }
 }

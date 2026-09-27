@@ -48,3 +48,62 @@ impl I2s {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_i2s_new() {
+        let i2s = I2s::new();
+        assert_eq!(i2s.cr, 0);
+        assert_eq!(i2s.last_left_sample, 0);
+        assert_eq!(i2s.last_right_sample, 0);
+        assert_eq!(i2s.sample_count, 0);
+    }
+
+    #[test]
+    fn test_i2s_control_register() {
+        let mut i2s = I2s::new();
+        
+        i2s.write_u32(I2S_CR, 0x03); // Enable + 32-bit
+        assert_eq!(i2s.read_u32(I2S_CR), 0x03);
+        assert_eq!(i2s.cr, 0x03);
+    }
+
+    #[test]
+    fn test_i2s_status_register() {
+        let i2s = I2s::new();
+        // Always ready
+        assert_eq!(i2s.read_u32(I2S_SR), 0x01);
+    }
+
+    #[test]
+    fn test_i2s_audio_samples() {
+        let mut i2s = I2s::new();
+        
+        // Write left sample
+        i2s.write_u32(I2S_LEFT_TX, 0x1234_5678);
+        assert_eq!(i2s.read_u32(I2S_LEFT_TX), 0x1234_5678);
+        assert_eq!(i2s.last_left_sample, 0x1234_5678);
+        assert_eq!(i2s.sample_count, 1);
+        
+        // Write right sample
+        i2s.write_u32(I2S_RIGHT_TX, 0xABCD_EF00);
+        assert_eq!(i2s.read_u32(I2S_RIGHT_TX), 0xABCD_EF00);
+        assert_eq!(i2s.last_right_sample, 0xABCD_EF00);
+        assert_eq!(i2s.sample_count, 1); // Only left increments
+        
+        // Write another left
+        i2s.write_u32(I2S_LEFT_TX, 0xFFFF_0000);
+        assert_eq!(i2s.sample_count, 2);
+    }
+
+    #[test]
+    fn test_i2s_unknown_offset() {
+        let mut i2s = I2s::new();
+        assert_eq!(i2s.read_u32(0x100), 0);
+        i2s.write_u32(0x100, 0xFF);
+        // Should not panic
+    }
+}

@@ -175,3 +175,197 @@ impl Instruction {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Instruction;
+
+    #[test]
+    fn test_opcode_extraction() {
+        let inst = Instruction(0x0000_0013); // addi x0, x0, 0
+        assert_eq!(inst.opcode(), 0x13);
+    }
+
+    #[test]
+    fn test_rd_extraction() {
+        let inst = Instruction(0x0010_0093); // addi x1, x0, 1
+        assert_eq!(inst.rd(), 1);
+        let inst = Instruction(0x0020_8113); // addi x2, x1, 2
+        assert_eq!(inst.rd(), 2);
+        let inst = Instruction(0x0031_0193); // addi x3, x2, 3
+        assert_eq!(inst.rd(), 3);
+    }
+
+    #[test]
+    fn test_rs1_rs2_extraction() {
+        let inst = Instruction(0x0020_8093); // addi x1, x1, 2
+        assert_eq!(inst.rs1(), 1);
+        let inst = Instruction(0x0030_8113); // addi x2, x1, 3 (wait, rs1=1)
+        assert_eq!(inst.rs1(), 1);
+        let inst = Instruction(0x0041_01B3); // add x3, x2, x4
+        assert_eq!(inst.rs1(), 2);
+        assert_eq!(inst.rs2(), 4);
+    }
+
+    #[test]
+    fn test_funct3_extraction() {
+        let inst = Instruction(0x0010_0093); // addi
+        assert_eq!(inst.funct3(), 0x0);
+        let inst = Instruction(0x0020_4093); // xori (funct3=4)
+        assert_eq!(inst.funct3(), 0x4);
+        let inst = Instruction(0x0030_6093); // ori (funct3=6)
+        assert_eq!(inst.funct3(), 0x6);
+    }
+
+    #[test]
+    fn test_funct7_extraction() {
+        let inst = Instruction(0x0000_0033); // add
+        assert_eq!(inst.funct7(), 0x00);
+        let inst = Instruction(0x4000_0033); // sub
+        assert_eq!(inst.funct7(), 0x20);
+        let inst = Instruction(0x0200_0033); // mul
+        assert_eq!(inst.funct7(), 0x01);
+    }
+
+    #[test]
+    fn test_imm_i() {
+        let inst = Instruction(0x0010_0093); // addi x1, x0, 1
+        assert_eq!(inst.imm_i(), 1);
+        let inst = Instruction(0xFFF0_0093); // addi x1, x0, -1
+        assert_eq!(inst.imm_i(), 0xFFFF_FFFF); // sign-extended to 32 bits
+        let inst = Instruction(0x8000_0093); // addi x1, x0, -2048
+        assert_eq!(inst.imm_i(), 0xFFFF_F800); // sign-extended to 32 bits
+    }
+
+    #[test]
+    fn test_imm_s() {
+        let inst = Instruction(0x0000_2023); // sw x1, 0(x0)
+        assert_eq!(inst.imm_s(), 0);
+        let inst = Instruction(0x0021_2423); // sw x2, 8(x2)
+        assert_eq!(inst.imm_s(), 8);
+        let inst = Instruction(0xFE21_2C23); // sw x2, -8(x2)
+        assert_eq!(inst.imm_s(), 0xFFFF_FFF8); // sign-extended -8
+    }
+
+#[test]
+    fn test_imm_b() {
+        let inst = Instruction(0x0000_0063); // beq x0, x0, 0
+        assert_eq!(inst.imm_b(), 0);
+        let inst = Instruction(0x0000_0263); // beq x0, x0, 4
+        assert_eq!(inst.imm_b(), 4);
+        let inst = Instruction(0xFE00_0FE3); // beq x0, x0, -4 (offset = -4, imm = -2)
+        assert_eq!(inst.imm_b(), 0xFFFF_FFFE); // sign-extended -2 (immediate value, not offset)
+    }
+
+    #[test]
+    fn test_imm_u() {
+        let inst = Instruction(0x0000_0037); // lui x0, 0
+        assert_eq!(inst.imm_u(), 0);
+        let inst = Instruction(0x1234_5037); // lui x0, 0x12345
+        assert_eq!(inst.imm_u(), 0x1234_5000);
+    }
+
+    #[test]
+    fn test_imm_j() {
+        let inst = Instruction(0x0000_006F); // jal x0, 0
+        assert_eq!(inst.imm_j(), 0);
+        let inst = Instruction(0x0040_006F); // jal x0, 4
+        assert_eq!(inst.imm_j(), 4);
+    }
+
+    #[test]
+    fn test_mnemonic_rv32i() {
+        assert_eq!(Instruction(0x0000_0037).mnemonic(), "lui");
+        assert_eq!(Instruction(0x0000_0017).mnemonic(), "auipc");
+        assert_eq!(Instruction(0x0000_006F).mnemonic(), "jal");
+        assert_eq!(Instruction(0x0000_0067).mnemonic(), "jalr");
+        assert_eq!(Instruction(0x0000_0063).mnemonic(), "beq");
+        assert_eq!(Instruction(0x0000_1063).mnemonic(), "bne");
+        assert_eq!(Instruction(0x0000_4063).mnemonic(), "blt");
+        assert_eq!(Instruction(0x0000_5063).mnemonic(), "bge");
+        assert_eq!(Instruction(0x0000_6063).mnemonic(), "bltu");
+        assert_eq!(Instruction(0x0000_7063).mnemonic(), "bgeu");
+        assert_eq!(Instruction(0x0000_0003).mnemonic(), "lb");
+        assert_eq!(Instruction(0x0000_1003).mnemonic(), "lh");
+        assert_eq!(Instruction(0x0000_2003).mnemonic(), "lw");
+        assert_eq!(Instruction(0x0000_4003).mnemonic(), "lbu");
+        assert_eq!(Instruction(0x0000_5003).mnemonic(), "lhu");
+        assert_eq!(Instruction(0x0000_0023).mnemonic(), "sb");
+        assert_eq!(Instruction(0x0000_1023).mnemonic(), "sh");
+        assert_eq!(Instruction(0x0000_2023).mnemonic(), "sw");
+        assert_eq!(Instruction(0x0000_0013).mnemonic(), "addi");
+        assert_eq!(Instruction(0x0000_2013).mnemonic(), "slti");
+        assert_eq!(Instruction(0x0000_3013).mnemonic(), "sltiu");
+        assert_eq!(Instruction(0x0000_4013).mnemonic(), "xori");
+        assert_eq!(Instruction(0x0000_6013).mnemonic(), "ori");
+        assert_eq!(Instruction(0x0000_7013).mnemonic(), "andi");
+        assert_eq!(Instruction(0x0000_1013).mnemonic(), "slli");
+        assert_eq!(Instruction(0x0000_5013).mnemonic(), "srli");
+        assert_eq!(Instruction(0x4000_5013).mnemonic(), "srai");
+        assert_eq!(Instruction(0x0000_0033).mnemonic(), "add");
+        assert_eq!(Instruction(0x4000_0033).mnemonic(), "sub");
+        assert_eq!(Instruction(0x0000_1033).mnemonic(), "sll");
+        assert_eq!(Instruction(0x0000_2033).mnemonic(), "slt");
+        assert_eq!(Instruction(0x0000_3033).mnemonic(), "sltu");
+        assert_eq!(Instruction(0x0000_4033).mnemonic(), "xor");
+        assert_eq!(Instruction(0x0000_5033).mnemonic(), "srl");
+        assert_eq!(Instruction(0x4000_5033).mnemonic(), "sra");
+        assert_eq!(Instruction(0x0000_6033).mnemonic(), "or");
+        assert_eq!(Instruction(0x0000_7033).mnemonic(), "and");
+    }
+
+    #[test]
+    fn test_mnemonic_rv32m() {
+        assert_eq!(Instruction(0x0200_0033).mnemonic(), "mul");
+        assert_eq!(Instruction(0x0200_1033).mnemonic(), "mulh");
+        assert_eq!(Instruction(0x0200_2033).mnemonic(), "mulhsu");
+        assert_eq!(Instruction(0x0200_3033).mnemonic(), "mulhu");
+        assert_eq!(Instruction(0x0200_4033).mnemonic(), "div");
+        assert_eq!(Instruction(0x0200_5033).mnemonic(), "divu");
+        assert_eq!(Instruction(0x0200_6033).mnemonic(), "rem");
+        assert_eq!(Instruction(0x0200_7033).mnemonic(), "remu");
+    }
+
+    #[test]
+    fn test_mnemonic_system() {
+        assert_eq!(Instruction(0x0000_0073).mnemonic(), "ecall");
+        assert_eq!(Instruction(0x0010_0073).mnemonic(), "ebreak");
+        assert_eq!(Instruction(0x3020_0073).mnemonic(), "mret");
+        assert_eq!(Instruction(0x1050_0073).mnemonic(), "wfi");
+        assert_eq!(Instruction(0x0000_1073).mnemonic(), "csrrw");
+        assert_eq!(Instruction(0x0000_2073).mnemonic(), "csrrs");
+        assert_eq!(Instruction(0x0000_3073).mnemonic(), "csrrc");
+        assert_eq!(Instruction(0x0000_5073).mnemonic(), "csrrwi");
+        assert_eq!(Instruction(0x0000_6073).mnemonic(), "csrrsi");
+        assert_eq!(Instruction(0x0000_7073).mnemonic(), "csrrci");
+    }
+
+    #[test]
+    fn test_mnemonic_rv32a() {
+        // For AMO instructions: funct7[6:2] = amo_op (5 bits), funct7[1:0] = aq/rl (2 bits) = 0
+        // funct5() returns (inst >> 27) & 0x1F = funct7[6:2] = amo_op
+        
+        // LR.W: amo_op = 0b00010 = 0x02
+        assert_eq!(Instruction(0x1000_202F).mnemonic(), "lr.w");
+        // SC.W: amo_op = 0b00011 = 0x03
+        assert_eq!(Instruction(0x1800_202F).mnemonic(), "sc.w");
+        // AMOADD.W: amo_op = 0b00000 = 0x00
+        assert_eq!(Instruction(0x0000_202F).mnemonic(), "amoadd.w");
+        // AMOSWAP.W: amo_op = 0b00001 = 0x01
+        assert_eq!(Instruction(0x0800_202F).mnemonic(), "amoswap.w");
+        // AMOXOR.W: amo_op = 0b00100 = 0x04
+        assert_eq!(Instruction(0x2000_202F).mnemonic(), "amoxor.w");
+        // AMOAND.W: amo_op = 0b01100 = 0x0C
+        assert_eq!(Instruction(0x6000_202F).mnemonic(), "amoand.w");
+        // AMOOR.W: amo_op = 0b01000 = 0x08
+        assert_eq!(Instruction(0x4000_202F).mnemonic(), "amoor.w");
+        // AMOMIN.W: amo_op = 0b10000 = 0x10
+        assert_eq!(Instruction(0x8000_202F).mnemonic(), "amomin.w");
+        // AMOMAX.W: amo_op = 0b10100 = 0x14
+        assert_eq!(Instruction(0xA000_202F).mnemonic(), "amomax.w");
+        // AMOMINU.W: amo_op = 0b11000 = 0x18
+        assert_eq!(Instruction(0xC000_202F).mnemonic(), "amominu.w");
+        // AMOMAXU.W: amo_op = 0b11100 = 0x1C
+        assert_eq!(Instruction(0xE000_202F).mnemonic(), "amomaxu.w");
+    }
+}

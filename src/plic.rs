@@ -115,3 +115,190 @@ impl Plic {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_plic_new() {
+        let plic = Plic::new();
+        assert_eq!(plic.priorities, [0; 32]);
+        assert_eq!(plic.pending, 0);
+        assert_eq!(plic.enabled, 0);
+        assert_eq!(plic.threshold, 0);
+        assert_eq!(plic.claimed, 0);
+    }
+
+    #[test]
+    fn test_plic_set_interrupt_pending() {
+        let mut plic = Plic::new();
+        
+        // Invalid source IDs (0 and >= 32) should be ignored
+        plic.set_interrupt_pending(0);
+        assert_eq!(plic.pending, 0);
+        
+        plic.set_interrupt_pending(32);
+        assert_eq!(plic.pending, 0);
+        
+        // Valid source ID
+        plic.set_interrupt_pending(1);
+        assert_eq!(plic.pending, 0b10);
+        
+        plic.set_interrupt_pending(5);
+        assert_eq!(plic.pending, 0b10_0010);
+        
+        plic.set_interrupt_pending(31);
+        // bit 1 (0x2) + bit 5 (0x20) + bit 31 (0x80000000) = 0x80000022
+        assert_eq!(plic.pending, 0x8000_0022);
+    }
+
+    #[test]
+    fn test_plic_priority_and_enable() {
+        let mut plic = Plic::new();
+        
+        // Set priorities
+        plic.write_u32(0x04, 5); // Source 1 priority = 5
+        plic.write_u32(0x08, 3); // Source 2 priority = 3
+        plic.write_u32(0x0C, 7); // Source 3 priority = 7
+        
+        assert_eq!(plic.priorities[1], 5);
+        assert_eq!(plic.priorities[2], 3);
+        assert_eq!(plic.priorities[3], 7);
+        
+        // Only lower 3 bits used for priority
+        plic.write_u32(0x10, 0xFF);
+        assert_eq!(plic.priorities[4], 0x7);
+    }
+
+    #[test]
+    fn test_plic_pending_register() {
+        let mut plic = Plic::new();
+        
+        plic.write_u32(0x1000, 0x0F); // Set pending bits 0-3
+        assert_eq!(plic.read_u32(0x1000), 0x0F);
+        assert_eq!(plic.pending, 0x0F);
+    }
+
+    #[test]
+    fn test_plic_enable_register() {
+        let mut plic = Plic::new();
+        
+        plic.write_u32(0x2000, 0xF0); // Enable bits 4-7
+        assert_eq!(plic.read_u32(0x2000), 0xF0);
+        assert_eq!(plic.enabled, 0xF0);
+    }
+
+    #[test]
+    fn test_plic_threshold() {
+        let mut plic = Plic::new();
+        
+        plic.write_u32(0x200000, 4);
+        assert_eq!(plic.read_u32(0x200000), 4);
+        assert_eq!(plic.threshold, 4);
+        
+        // Only lower 3 bits
+        plic.write_u32(0x200000, 0xFF);
+        assert_eq!(plic.threshold, 0x7);
+    }
+
+    #[test]
+    fn test_plic_is_interrupt_pending() {
+        let mut plic = Plic::new();
+        
+        // No enabled interrupts
+        assert!(!plic.is_interrupt_pending());
+        
+        // Enable source 1, priority 5
+        plic.write_u32(0x04, 5);
+        plic.write_u32(0x2000, 0x2); // Enable source 1
+        plic.set_interrupt_pending(1);
+        
+        // Priority (5) > threshold (0) -> interrupt pending
+        assert!(plic.is_interrupt_pending());
+        
+        // Raise threshold above priority
+        plic.write_u32(0x200000, 6);
+        assert!(!plic.is_interrupt_pending());
+    }
+
+    #[test]
+    fn test_plic_claim() {
+        let mut plic = Plic::new();
+        
+        // Set up multiple interrupts
+        plic.write_u32(0x04, 3); // Source 1, prio 3
+        plic.write_u32(0x08, 5); // Source 2, prio 5
+        plic.write_u32(0x0C, 4); // Source 3, prio 4
+        plic.write_u32(0x2000, 0xE); // Enable 1, 2, 3
+        plic.set_interrupt_pending(1);
+        plic.set_interrupt_pending(2);
+        plic.set_interrupt_pending(3);
+        
+        // Claim should return highest priority (source 2, prio 5)
+        let claimed = plic.claim();
+        assert_eq!(claimed, 2);
+        assert_eq!(plic.claimed, 2);
+        assert_eq!(plic.pending, 0xA); // Source 2 cleared, 1 and 3 remain
+        
+        // Next claim should return source 3 (prio 4)
+        let claimed = plic.claim();
+        assert_eq!(claimed, 3);
+        assert_eq!(plic.pending, 0x2); // Only source 1 remains
+        
+        // Next claim should return source 1 (prio 3)
+        let claimed = plic.claim();
+        assert_eq!(claimed, 1);
+        assert_eq!(plic.pending, 0);
+        
+        // No more interrupts
+        let claimed = plic.claim();
+        assert_eq!(claimed, 0);
+    }
+
+    #[test]
+    fn test_plic_complete() {
+        let mut plic = Plic::new();
+        
+        plic.write_u32(0x04, 5);
+        plic.write_u32(0x2000, 0x2);
+        plic.set_interrupt_pending(1);
+        
+        let claimed = plic.claim();
+        assert_eq!(claimed, 1);
+        assert_eq!(plic.claimed, 1);
+        
+        // Complete with wrong ID should not clear claimed
+        plic.complete(2);
+        assert_eq!(plic.claimed, 1);
+        
+        // Complete with correct ID
+        plic.complete(1);
+        assert_eq!(plic.claimed, 0);
+    }
+
+    #[test]
+    fn test_plic_claim_complete_register() {
+        let mut plic = Plic::new();
+        
+        plic.write_u32(0x04, 5);
+        plic.write_u32(0x2000, 0x2);
+        plic.set_interrupt_pending(1);
+        
+        // Read claim/complete register triggers claim
+        let claimed = plic.read_u32(0x200004);
+        assert_eq!(claimed, 1);
+        
+        // Write to claim/complete register triggers complete
+        plic.write_u32(0x200004, 1);
+        assert_eq!(plic.claimed, 0);
+    }
+
+    #[test]
+    fn test_plic_unknown_offset() {
+        let mut plic = Plic::new();
+        assert_eq!(plic.read_u32(0x100), 0);
+        plic.write_u32(0x100, 0xFF);
+        // Should not panic
+    }
+}

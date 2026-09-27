@@ -65,3 +65,74 @@ impl Gpio {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_gpio_new() {
+        let gpio = Gpio::new(false);
+        assert_eq!(gpio.dir, 0);
+        assert_eq!(gpio.data, 0);
+        assert_eq!(gpio.int_en, 0);
+        assert!(gpio.ipc.is_none());
+    }
+
+    #[test]
+    fn test_gpio_dir_register() {
+        let mut gpio = Gpio::new(false);
+        
+        gpio.write_u32(GPIO_DIR_OFFSET, 0xFF);
+        assert_eq!(gpio.read_u32(GPIO_DIR_OFFSET), 0xFF);
+        assert_eq!(gpio.dir, 0xFF);
+    }
+
+    #[test]
+    fn test_gpio_data_register() {
+        let mut gpio = Gpio::new(false);
+        
+        gpio.write_u32(GPIO_DATA_OFFSET, 0xAA);
+        assert_eq!(gpio.read_u32(GPIO_DATA_OFFSET), 0xAA);
+        assert_eq!(gpio.data, 0xAA);
+    }
+
+    #[test]
+    fn test_gpio_set_clear() {
+        let mut gpio = Gpio::new(false);
+        
+        gpio.write_u32(GPIO_DATA_OFFSET, 0x00);
+        assert_eq!(gpio.data, 0x00);
+        
+        // SET bits
+        gpio.write_u32(GPIO_SET_OFFSET, 0x0F);
+        assert_eq!(gpio.data, 0x0F);
+        
+        gpio.write_u32(GPIO_SET_OFFSET, 0xF0);
+        assert_eq!(gpio.data, 0xFF);
+        
+        // CLEAR bits
+        gpio.write_u32(GPIO_CLEAR_OFFSET, 0x0F);
+        assert_eq!(gpio.data, 0xF0);
+        
+        gpio.write_u32(GPIO_CLEAR_OFFSET, 0xF0);
+        assert_eq!(gpio.data, 0x00);
+    }
+
+    #[test]
+    fn test_gpio_int_en() {
+        let mut gpio = Gpio::new(false);
+        
+        gpio.write_u32(GPIO_INT_EN_OFFSET, 0x55);
+        assert_eq!(gpio.read_u32(GPIO_INT_EN_OFFSET), 0x55);
+        assert_eq!(gpio.int_en, 0x55);
+    }
+
+    #[test]
+    fn test_gpio_unknown_offset() {
+        let mut gpio = Gpio::new(false);
+        assert_eq!(gpio.read_u32(0x100), 0);
+        gpio.write_u32(0x100, 0xFF);
+        // Should not panic
+    }
+}

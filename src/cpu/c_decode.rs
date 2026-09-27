@@ -254,3 +254,93 @@ pub fn decompress(c_raw: u16) -> Option<u32> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::decompress;
+
+    #[test]
+    fn test_c_nop() {
+        // C.NOP = C.ADDI with rd=x0, imm=0 -> 0x0001
+        assert_eq!(decompress(0x0001), Some(0x0000_0013)); // addi x0, x0, 0
+    }
+
+    #[test]
+    fn test_c_ebreak() {
+        // C.EBREAK
+        assert_eq!(decompress(0x9002), Some(0x0010_0073));
+    }
+
+    #[test]
+    fn test_c_bez() {
+        // C.BEQZ x8, offset=4
+        let result = decompress(0xC401); // C.BEQZ x8, 4
+        assert!(result.is_some());
+        let inst = result.unwrap();
+        assert_eq!(inst & 0x7F, 0x63); // BRANCH
+        assert_eq!((inst >> 12) & 0x7, 0x0); // funct3=0 (BEQ)
+        assert_eq!((inst >> 15) & 0x1F, 8); // rs1=x8
+        assert_eq!((inst >> 20) & 0x1F, 0); // rs2=x0
+    }
+
+    #[test]
+    fn test_c_bnez() {
+        // C.BNEZ x8, offset=4
+        let result = decompress(0xE401); // C.BNEZ x8, 4
+        assert!(result.is_some());
+        let inst = result.unwrap();
+        assert_eq!((inst >> 12) & 0x7, 0x1); // funct3=1 (BNE)
+    }
+
+    #[test]
+    fn test_c_j() {
+        // C.J offset=4
+        let result = decompress(0xA001); // C.J 4
+        assert!(result.is_some());
+        let inst = result.unwrap();
+        assert_eq!(inst & 0x7F, 0x6F); // JAL
+        assert_eq!((inst >> 7) & 0x1F, 0); // rd=x0
+    }
+
+    #[test]
+    fn test_c_lwsp() {
+        // C.LWSP x5, 8(x2)
+        let result = decompress(0x4282); // C.LWSP x5, 8
+        assert!(result.is_some());
+        let inst = result.unwrap();
+        assert_eq!(inst & 0x7F, 0x03); // LOAD
+        assert_eq!((inst >> 12) & 0x7, 0x2); // funct3=2 (LW)
+        assert_eq!((inst >> 7) & 0x1F, 5); // rd=x5
+        assert_eq!((inst >> 15) & 0x1F, 2); // rs1=x2
+    }
+
+    #[test]
+    fn test_c_addi4spn() {
+        // C.ADDI4SPN x8, x2, 8 -> x8 = x2 + 8
+        // funct3=000, rd'=0 (x8), nzuimm=8
+        let result = decompress(0x0020); // C.ADDI4SPN x8, 8
+        assert!(result.is_some());
+        let inst = result.unwrap();
+        assert_eq!(inst & 0x7F, 0x13); // OP-IMM
+        assert_eq!((inst >> 7) & 0x1F, 8); // rd=x8
+        assert_eq!((inst >> 15) & 0x1F, 2); // rs1=x2
+    }
+
+    #[test]
+    fn test_invalid_instructions() {
+        // Reserved: C.ADDI4SPN with nzuimm=0
+        assert_eq!(decompress(0x0000), None);
+        
+        // C.LI with rd=0
+        assert_eq!(decompress(0x0002), None);
+        
+        // C.LUI with rd=0
+        assert_eq!(decompress(0x0003), None);
+        
+        // C.LWSP with rd=0
+        assert_eq!(decompress(0x0012), None);
+        
+        // C.JR with rs1=0
+        assert_eq!(decompress(0x8000), None);
+    }
+}

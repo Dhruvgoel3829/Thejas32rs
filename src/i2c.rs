@@ -90,3 +90,114 @@ impl I2c {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_i2c_new() {
+        let i2c = I2c::new();
+        assert_eq!(i2c.cr, 0);
+        assert_eq!(i2c.sr, 0x04); // ACK by default
+        assert_eq!(i2c.addr, 0);
+        assert_eq!(i2c.rx_buf, 0);
+        assert_eq!(i2c.eeprom_memory, [0xFF; 256]);
+        assert_eq!(i2c.eeprom_ptr, 0);
+        assert_eq!(i2c.eeprom_addr_latch, false);
+    }
+
+    #[test]
+    fn test_i2c_control_register() {
+        let mut i2c = I2c::new();
+        
+        i2c.write_u32(I2C_CR, 0x1234);
+        assert_eq!(i2c.read_u32(I2C_CR), 0x1234);
+        assert_eq!(i2c.cr, 0x1234);
+    }
+
+    #[test]
+    fn test_i2c_address_register() {
+        let mut i2c = I2c::new();
+        
+        // Write address 0x50 (virtual EEPROM)
+        i2c.write_u32(I2C_ADDR, 0x50);
+        assert_eq!(i2c.read_u32(I2C_ADDR), 0x50);
+        assert_eq!(i2c.addr, 0x50);
+        assert_eq!(i2c.sr & 0x04, 0x04); // ACK set
+        
+        // Write invalid address
+        i2c.write_u32(I2C_ADDR, 0x60);
+        assert_eq!(i2c.sr & 0x04, 0x00); // NACK
+    }
+
+    #[test]
+    fn test_i2c_eeprom_write_read() {
+        let mut i2c = I2c::new();
+        
+        // Address the EEPROM
+        i2c.write_u32(I2C_ADDR, 0x50);
+        
+        // Write: first byte sets pointer, second byte is data
+        i2c.write_u32(I2C_DATA, 0x10); // Set pointer to 0x10
+        assert_eq!(i2c.eeprom_addr_latch, true);
+        assert_eq!(i2c.eeprom_ptr, 0x10);
+        
+        i2c.write_u32(I2C_DATA, 0xAA); // Write 0xAA at 0x10
+        assert_eq!(i2c.eeprom_memory[0x10], 0xAA);
+        assert_eq!(i2c.eeprom_ptr, 0x11); // Auto-increment
+        
+        i2c.write_u32(I2C_DATA, 0xBB); // Write 0xBB at 0x11
+        assert_eq!(i2c.eeprom_memory[0x11], 0xBB);
+        assert_eq!(i2c.eeprom_ptr, 0x12);
+        
+        // Verify memory contents directly (reading back via I2C interface
+        // requires resetting the pointer which isn't exposed in this model)
+        assert_eq!(i2c.eeprom_memory[0x10], 0xAA);
+        assert_eq!(i2c.eeprom_memory[0x11], 0xBB);
+    }
+
+    #[test]
+    fn test_i2c_eeprom_addr_latch() {
+        let mut i2c = I2c::new();
+        
+        i2c.write_u32(I2C_ADDR, 0x50);
+        
+        // First write sets pointer
+        i2c.write_u32(I2C_DATA, 0x20);
+        assert_eq!(i2c.eeprom_ptr, 0x20);
+        assert_eq!(i2c.eeprom_addr_latch, true);
+        
+        // Subsequent writes write data
+        i2c.write_u32(I2C_DATA, 0x55);
+        assert_eq!(i2c.eeprom_memory[0x20], 0x55);
+        assert_eq!(i2c.eeprom_ptr, 0x21);
+    }
+
+    #[test]
+    fn test_i2c_status_flags() {
+        let mut i2c = I2c::new();
+        
+        // TX Ready bit (0x01) - not implemented in current code
+        // RX Ready bit (0x02) - set on read
+        // ACK bit (0x04) - set on valid address
+        assert_eq!(i2c.sr & 0x04, 0x04); // Initial ACK
+        
+        i2c.write_u32(I2C_ADDR, 0x50);
+        assert_eq!(i2c.sr & 0x04, 0x04); // ACK for valid device
+        
+        i2c.write_u32(I2C_CR, 0x08); // Read
+        assert_eq!(i2c.sr & 0x02, 0x02); // RX Ready
+        
+        i2c.read_u32(I2C_DATA); // Read clears RX Ready
+        assert_eq!(i2c.sr & 0x02, 0x00);
+    }
+
+    #[test]
+    fn test_i2c_unknown_offset() {
+        let mut i2c = I2c::new();
+        assert_eq!(i2c.read_u32(0x100), 0);
+        i2c.write_u32(0x100, 0xFF);
+        // Should not panic
+    }
+}

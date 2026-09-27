@@ -62,3 +62,70 @@ impl Spi {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_spi_new() {
+        let spi = Spi::new(false);
+        assert_eq!(spi.ctrl, 0);
+        assert_eq!(spi.data_rx, 0xFF);
+        assert_eq!(spi.status, 0x01); // Ready
+        assert_eq!(spi.cs, 0xFFFF_FFFF);
+        assert!(spi.ipc.is_none());
+    }
+
+    #[test]
+    fn test_spi_ctrl_register() {
+        let mut spi = Spi::new(false);
+        
+        spi.write_u32(SPI_CTRL_OFFSET, 0x1234);
+        assert_eq!(spi.read_u32(SPI_CTRL_OFFSET), 0x1234);
+        assert_eq!(spi.ctrl, 0x1234);
+    }
+
+    #[test]
+    fn test_spi_cs_register() {
+        let mut spi = Spi::new(false);
+        
+        spi.write_u32(SPI_CS_OFFSET, 0x01);
+        assert_eq!(spi.read_u32(SPI_CS_OFFSET), 0x01);
+        assert_eq!(spi.cs, 0x01);
+    }
+
+    #[test]
+    fn test_spi_loopback() {
+        let mut spi = Spi::new(false);
+        
+        // Write data (loopback: mosi + 1)
+        spi.write_u32(SPI_DATA_OFFSET, 0x55);
+        assert_eq!(spi.read_u32(SPI_DATA_OFFSET), 0x56);
+        assert_eq!(spi.status, 0x01);
+        
+        spi.write_u32(SPI_DATA_OFFSET, 0xFF);
+        assert_eq!(spi.read_u32(SPI_DATA_OFFSET), 0x00); // wrap
+        assert_eq!(spi.status, 0x01);
+    }
+
+    #[test]
+    fn test_spi_status() {
+        let mut spi = Spi::new(false);
+        
+        // Initially ready
+        assert_eq!(spi.read_u32(SPI_STATUS_OFFSET), 0x01);
+        
+        // After write, status still has ready bit
+        spi.write_u32(SPI_DATA_OFFSET, 0x00);
+        assert_eq!(spi.read_u32(SPI_STATUS_OFFSET), 0x01);
+    }
+
+    #[test]
+    fn test_spi_unknown_offset() {
+        let mut spi = Spi::new(false);
+        assert_eq!(spi.read_u32(0x100), 0);
+        spi.write_u32(0x100, 0xFF);
+        // Should not panic
+    }
+}
