@@ -333,8 +333,8 @@ No remaining tasks within THEJAS32 scope. Project is feature-complete for its de
 | Task | Status | Notes |
 |------|--------|-------|
 | **hwdef.dat template** | ✅ Complete | All peripherals mapped, pins as TODO |
-| **board_config.h** | ⏳ Next | Clock, memory, boot config |
-| **board.c** | ⏳ Pending | Peripheral init (SPI, I2C, UART, PWM, ADC) |
+| **board_config.h template** | ✅ Complete | Clock, memory, peripheral config |
+| **board.c** | ⏳ Next | Peripheral init (SPI, I2C, UART, PWM, ADC) |
 | **ChibiOS VEGA port** | ⏳ Pending | Verify/port ChibiOS for VEGA |
 | **ArduPilot build** | ⏳ Pending | ./waf configure --board=vega |
 | **SITL testing** | ⏳ Pending | Test with emulator --ipc |
