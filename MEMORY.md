@@ -59,6 +59,7 @@ Cycle-accurate **RV32IM** RISC-V SoC emulator in Rust implementing the custom **
 - `compressed_test.c` - RV32C factorial test
 - `atomic_test.c` - AMOADD, AMOSWAP, LR/SC CAS test
 - `timer_test.c` - Timer interrupt test
+- `timer_poll_test.c` - Timer auto-reload polling test
 - `plic_test.c` - PLIC interrupt test
 - `scheduler_test.c` + `scheduler_asm.s` - Preemptive scheduler with trap entry
 - `flight_controller.c` - SPI IMU + PID control loop (simple rate PID)
@@ -132,12 +133,14 @@ Reserved/unknown opcodes now trap with illegal instruction (cause 2) instead of 
 - `SocketBackend::wait_for_client()` / `recv()` - Reserved for future IPC features
 
 ### Testing
-- **115 unit tests** passing (cargo test)
+- **132 unit tests** passing (cargo test)
   - CPU decode: 22 tests (RV32I, M, A, C, System mnemonics)
   - CSR: 10 tests (read/write, MISA, cycle, PMP config/addr)
   - PMP: 18 tests (config/addr R/W, TOR/NA4/NAPOT, access checks)
   - Peripherals: 65 tests (CLINT, PLIC, Timer, GPIO, SPI, I2S, I2C, DMA, WDT)
-- Integration testing via manual ELF execution (hello, compressed, atomic, timer, scheduler, flight controller, etc.)
+  - ADC: 8 tests (register R/W, channel conversion, status flags)
+  - PWM: 9 tests (register R/W, freq/duty/dead-time/phase, clamping)
+- Integration testing via manual ELF execution (hello, compressed, atomic, timer, scheduler, flight controller, drone_peripheral_test, etc.)
 
 ## Project Structure
 ```
@@ -231,10 +234,111 @@ All THEJAS32 (RV32IM + RV32C + RV32A) scope items complete:
 ✅ All 12 peripherals (CLINT, PLIC, UART, GPIO, Timer, SPI, I2S, I2C, DMA, WDT, QSPI, PMP)
 ✅ GDB Stub, ELF Loader
 ✅ Scheduler Test, Flight Controller
-✅ 115 unit tests
+✅ 132 unit tests (115 core + 17 new)
 ✅ Illegal instruction traps (cause 2)
+✅ 7/12 peripherals exposed to Gazebo SITL
+✅ Comprehensive drone peripheral test program
 
 No remaining tasks within THEJAS32 scope. Project is feature-complete for its defined ISA.
+
+### Optional Enhancements (Outside Core Scope)
+- CAN bridge for Gazebo (UAVCAN/ESC telemetry)
+- Timer capture/compare Gazebo exposure
+- Remaining peripheral Gazebo exposure (QSPI, DMA, WDT, I2S)
+- Flight controller PID tuning with real Gazebo physics
+- **NIDAR VEGAPilot Flight Controller Requirements** (from Mission Brief)
+
+## NIDAR VEGAPilot Flight Controller Requirements (Mission Brief)
+
+### Core Constraints
+- **Processor**: ARIES v3 - VEGA Processor Board (sole processing platform)
+- **No additional processors/MCUs** for any autopilot function
+- **No Chinese-origin components** (complete supply chain restriction)
+- **Only prescribed components** from organizer's list
+- **Custom PCBs allowed** only for integration (no unlisted active components)
+
+### Required Flight Modes
+| Mode | Description |
+|------|-------------|
+| arm / disarm | Safe arming/disarming with safety checks |
+| manual / assisted stabilized | Direct motor control with attitude stabilization |
+| position hold | GNSS-based position hold |
+| altitude hold | Barometer-based altitude hold |
+| autonomous mission mode | Waypoint navigation |
+| return-to-home / return-to-launch | RTL/RTL failsafe |
+
+### Required Capabilities
+| Category | Requirements |
+|----------|--------------|
+| **Sensor Processing** | IMU (accel/gyro), Barometer, Compass, GNSS |
+| **Motor Control** | ESC outputs (4+ channels), PWM/DShot |
+| **Attitude Control** | Stable hover, roll/pitch/yaw response |
+| **Navigation** | Waypoint mission, position hold, RTL |
+| **Communication** | MAVLink telemetry to GCS (Mission Planner) |
+| **Failsafe** | Low battery, link loss, GNSS loss, RTL, emergency landing |
+| **Logging** | Flight data, sensor inputs, motor outputs |
+
+### Required Interfaces (per Mission Brief)
+| Interface | Purpose | Peripheral |
+|-----------|---------|------------|
+| **SPI** | IMU (MPU-6000/ICM-20602) | ✅ Exposed |
+| **I2C** | Baro (MS5611), Compass (HMC5883L), GPS | ✅ Exposed |
+| **UART** | GNSS NMEA, Telemetry, RC receiver | ✅ Exposed |
+| **ADC** | Battery voltage, Current sensor, RSSI | ✅ Exposed |
+| **PWM** | ESC outputs (4-8 channels) | ✅ Exposed |
+| **GPIO** | LED status, Buzzer, Safety switch | ✅ Exposed |
+
+### Final Mission Demonstration Requirements
+1. **Pre-flight**: Sensor checks, motor outputs, comms verification
+2. **Arm/Disarm**: Safe arming sequence
+3. **Takeoff**: Designated launch area
+3. **Stable hover**: Specified duration
+4. **Control response**: Roll, pitch, yaw, throttle
+4. **Navigation**: Forward/back/left/right with stability
+5. **Course navigation**: Gates/markers in sequence
+5. **Stable hover at waypoints**: Designated points
+7. **Controlled recovery**: Return to neutral inputs
+8. **Landing**: Designated zone, safe landing
+8. **Data logging**: Sensor inputs, commands, motor outputs
+
+### Communication Requirements
+- **Protocol**: MAVLink (ArduPilot/PX4 compatible)
+- **Telemetry**: Location, altitude, mode, battery, mission status, failsafe, link status
+- **GCS**: Mission Planner / Ground Control Station
+- **Commands**: Mission upload, waypoints, flight modes, RTL/abort
+
+### Safety & Failsafe (Mandatory)
+- Low battery detection & action
+- Command/control link loss → RTL
+- GNSS signal loss → RTL/landing
+- Unstable flight → Emergency landing
+- Mission abort capability
+- Return-to-home / Return-to-launch
+- Emergency landing
+
+### Supply Chain Compliance
+- **Zero Chinese-origin components** (resistors to ICs)
+- **Bill of Materials**: Make, model, manufacturer, country, supplier
+- **Documentation**: Datasheets, invoices, supplier confirmations
+- **Only prescribed components** from organizer list
+
+### Development Platform
+- **ARIES v3 - VEGA Processor Board** (2 boards provided)
+- **VEGA ISA**: RISC-V (RV32IMAC compatible)
+- **Open-source leverage**: ArduPilot, PX4, MAVLink allowed
+- **Two boards**: Development + final integration
+
+### ArduPilot VEGA Port Progress
+
+| Task | Status | Notes |
+|------|--------|-------|
+| **hwdef.dat template** | ✅ Complete | All peripherals mapped, pins as TODO |
+| **board_config.h** | ⏳ Next | Clock, memory, boot config |
+| **board.c** | ⏳ Pending | Peripheral init (SPI, I2C, UART, PWM, ADC) |
+| **ChibiOS VEGA port** | ⏳ Pending | Verify/port ChibiOS for VEGA |
+| **ArduPilot build** | ⏳ Pending | ./waf configure --board=vega |
+| **SITL testing** | ⏳ Pending | Test with emulator --ipc |
+| **Hardware bring-up** | ⏳ Pending | Flash to real VEGA boards |
 
 ## IPC-Based External Integration (AI-in-the-Loop Drone Firmware Development)
 
@@ -342,7 +446,7 @@ python3 tools/sitl_bridge.py
 
 ## Gazebo Peripheral Exposure Status (as of 2026-09-27)
 
-### Currently Exposed to Gazebo (6/12 peripherals)
+### Currently Exposed to Gazebo (7/12 peripherals)
 
 | Peripheral | Emulator Socket | Python Bridge | Gazebo Plugin | UDP Port | Status |
 |------------|----------------|---------------|---------------|----------|--------|
@@ -353,7 +457,7 @@ python3 tools/sitl_bridge.py
 | **ADC** (Analog) | `/tmp/thejas_adc.sock` | Battery/Current/RSSI | Custom sensor emulation | 9002 (ADC data) | ✅ Working |
 | **PWM** (Servos) | `/tmp/thejas_pwm.sock` | 8-channel duty/freq/phase | Motor/servo joints | 9002 (PWM data) | ✅ Working |
 
-### Not Yet Exposed (6/12 peripherals)
+### Not Yet Exposed (5/12 peripherals)
 
 | Peripheral | Emulator Socket | Plan | Gazebo Sensor | Priority |
 |------------|----------------|------|---------------|----------|
@@ -369,5 +473,5 @@ python3 tools/sitl_bridge.py
 1. ✅ **I2C Bridge** - Barometer (MS5611), Compass (HMC5883L), GPS (I2C) - DONE
 2. ✅ **UART Bridge** - GPS NMEA, Telemetry, Serial console - DONE
 3. ✅ **ADC Bridge** - Battery voltage, Current sensor, RSSI - DONE
-4. **PWM Bridge** - 8+ servo/ESC outputs
+4. ✅ **PWM Bridge** - 8+ servo/ESC outputs - DONE
 5. **CAN Bridge** - ESC telemetry, UAVCAN
