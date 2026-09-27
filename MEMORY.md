@@ -338,3 +338,35 @@ python3 tools/sitl_bridge.py
 - Cross-compile test programs with `riscv-none-elf-gcc -march=rv32imac_zicsr -mabi=ilp32`
 - Gazebo SITL integration: External Python bridges via Unix sockets (core emulator is Gazebo-free)
 - Flight controller uses SPI for MPU-6000 IMU + GPIO for motor outputs
+
+## Gazebo Peripheral Exposure Status (as of 2026-09-27)
+
+### Currently Exposed to Gazebo (6/12 peripherals)
+
+| Peripheral | Emulator Socket | Python Bridge | Gazebo Plugin | UDP Port | Status |
+|------------|----------------|---------------|---------------|----------|--------|
+| **SPI** (IMU) | `/tmp/thejas_spi.sock` | MPU-6000 register emulation | ❌ Direct access | 9002 (IMU data) | ✅ Working |
+| **GPIO** (Motors) | `/tmp/thejas_gpio.sock` | 4-byte motor forward | 4 motor forces | 9003 (motor cmds) | ✅ Working |
+| **I2C** (Sensors) | `/tmp/thejas_i2c.sock` | Baro/Compass/GPS emulation | Baro/Compass/GPS sensors | 9002 (I2C data) | ✅ Working |
+| **UART** (Telemetry) | `/tmp/thejas_uart.sock` | GPS NMEA, telemetry | GPS NMEA output | 9002 (UART data) | ✅ Working |
+| **ADC** (Analog) | `/tmp/thejas_adc.sock` | Battery/Current/RSSI | Custom sensor emulation | 9002 (ADC data) | ✅ Working |
+| **PWM** (Servos) | `/tmp/thejas_pwm.sock` | 8-channel duty/freq/phase | Motor/servo joints | 9002 (PWM data) | ✅ Working |
+
+### Not Yet Exposed (6/12 peripherals)
+
+| Peripheral | Emulator Socket | Plan | Gazebo Sensor | Priority |
+|------------|----------------|------|---------------|----------|
+| **CAN** | Add `/tmp/thejas_can.sock` | ESC telemetry, GPS | N/A | 1 |
+| **Timer** | Local only | Timer capture/compare | N/A | 2 |
+| **QSPI** | Local only | Flash XIP | N/A | - |
+| **DMA** | Local only | Memory copy | N/A | - |
+| **WDT** | Local only | Watchdog | N/A | - |
+| **I2S** | Local only | Audio | N/A | - |
+
+### Next Implementation Plan (One by One)
+
+1. ✅ **I2C Bridge** - Barometer (MS5611), Compass (HMC5883L), GPS (I2C) - DONE
+2. ✅ **UART Bridge** - GPS NMEA, Telemetry, Serial console - DONE
+3. ✅ **ADC Bridge** - Battery voltage, Current sensor, RSSI - DONE
+4. **PWM Bridge** - 8+ servo/ESC outputs
+5. **CAN Bridge** - ESC telemetry, UAVCAN

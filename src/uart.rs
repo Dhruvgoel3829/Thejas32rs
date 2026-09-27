@@ -1,3 +1,4 @@
+use crate::ipc::SocketBackend;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use std::io::{self, Write};
 use std::sync::mpsc::{self, Receiver};
@@ -13,10 +14,11 @@ const UART_LSR: u32 = 0x05;
 pub struct Uart {
     rx_receiver: Receiver<u8>,
     rx_buffer: Option<u8>,
+    ipc: Option<SocketBackend>,
 }
 
 impl Uart {
-    pub fn new() -> Self {
+    pub fn new(enable_ipc: bool) -> Self {
         let (tx, rx) = mpsc::channel();
 
         thread::spawn(move || {
@@ -52,6 +54,11 @@ impl Uart {
         Self {
             rx_receiver: rx,
             rx_buffer: None,
+            ipc: if enable_ipc {
+                Some(SocketBackend::new("/tmp/thejas_uart.sock"))
+            } else {
+                None
+            },
         }
     }
 
@@ -59,6 +66,14 @@ impl Uart {
         if self.rx_buffer.is_none() {
             if let Ok(byte) = self.rx_receiver.try_recv() {
                 self.rx_buffer = Some(byte);
+            }
+            // If IPC enabled, also try to read from external UART device
+            if let Some(ref mut ipc) = self.ipc {
+                let mut buf = [0u8; 1];
+                let n = ipc.recv(&mut buf);
+                if n == 1 && self.rx_buffer.is_none() {
+                    self.rx_buffer = Some(buf[0]);
+                }
             }
         }
 
@@ -78,10 +93,16 @@ impl Uart {
     pub fn write_u8(&mut self, offset: u32, val: u8) {
         match offset {
             UART_RHR_THR => {
+                // Local terminal output
                 let stdout = io::stdout();
                 let mut handle = stdout.lock();
                 let _ = handle.write_all(&[val]);
                 let _ = handle.flush();
+
+                // Forward to external UART device via IPC
+                if let Some(ref mut ipc) = self.ipc {
+                    ipc.send(&[val]);
+                }
             }
             _ => {}
         }

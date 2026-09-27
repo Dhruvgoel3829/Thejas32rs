@@ -1,4 +1,5 @@
 // src/main.rs
+mod adc;
 mod bus;
 mod clint;
 mod cpu;
@@ -8,6 +9,7 @@ mod gpio;
 mod i2c;
 mod i2s;
 mod plic;
+mod pwm;
 mod spi;
 mod timer;
 mod uart;

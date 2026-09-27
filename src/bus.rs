@@ -1,10 +1,12 @@
 // src/bus.rs
+use crate::adc::{Adc, ADC_BASE};
 use crate::clint::{Clint, CLINT_BASE};
 use crate::dma::{Dma, DMA_BASE};
 use crate::gpio::{Gpio, GPIO_BASE};
 use crate::i2c::{I2c, I2C_BASE};
 use crate::i2s::{I2s, I2S_BASE};
 use crate::plic::{Plic, PLIC_BASE};
+use crate::pwm::{Pwm, PWM_BASE};
 use crate::qspi::{QspiFlash, FLASH_BASE};
 use crate::spi::{Spi, SPI_BASE};
 use crate::timer::{Timer, TIMER_BASE};
@@ -28,6 +30,8 @@ pub struct Bus {
     pub spi: Spi,
     pub i2s: I2s,
     pub i2c: I2c,
+    pub adc: Adc,
+    pub pwm: Pwm,
     pub dma: Dma,
     pub wdt: Wdt,
 }
@@ -37,14 +41,16 @@ impl Bus {
         Self {
             ram: vec![0; RAM_SIZE],
             flash: QspiFlash::new(),
-            uart: Uart::new(),
+            uart: Uart::new(enable_ipc),
             clint: Clint::new(),
             plic: Plic::new(),
             gpio: Gpio::new(enable_ipc),
             timer: Timer::new(),
             spi: Spi::new(enable_ipc),
             i2s: I2s::new(),
-            i2c: I2c::new(),
+            i2c: I2c::new(enable_ipc),
+            adc: Adc::new(enable_ipc),
+            pwm: Pwm::new(enable_ipc),
             dma: Dma::new(),
             wdt: Wdt::new(),
         }
@@ -171,6 +177,16 @@ impl Bus {
                 let shift = (offset & 0x3) * 8;
                 ((self.i2c.read_u32(offset & !0x3) >> shift) & 0xFF) as u8
             }
+            0x1008_0000..=0x1008_0FFF => {
+                let offset = addr - ADC_BASE;
+                let shift = (offset & 0x3) * 8;
+                ((self.adc.read_u32(offset & !0x3) >> shift) & 0xFF) as u8
+            }
+            0x1009_0000..=0x1009_0FFF => {
+                let offset = addr - PWM_BASE;
+                let shift = (offset & 0x3) * 8;
+                ((self.pwm.read_u32(offset & !0x3) >> shift) & 0xFF) as u8
+            }
             0x1006_0000..=0x1006_0FFF => {
                 let offset = addr - DMA_BASE;
                 let shift = (offset & 0x3) * 8;
@@ -247,6 +263,22 @@ impl Bus {
                 current = (current & !(0xFF << shift)) | ((val as u32) << shift);
                 self.i2c.write_u32(word_offset, current);
             }
+            0x1008_0000..=0x1008_0FFF => {
+                let offset = addr - ADC_BASE;
+                let word_offset = offset & !0x3;
+                let mut current = self.adc.read_u32(word_offset);
+                let shift = (offset & 0x3) * 8;
+                current = (current & !(0xFF << shift)) | ((val as u32) << shift);
+                self.adc.write_u32(word_offset, current);
+            }
+            0x1009_0000..=0x1009_0FFF => {
+                let offset = addr - PWM_BASE;
+                let word_offset = offset & !0x3;
+                let mut current = self.pwm.read_u32(word_offset);
+                let shift = (offset & 0x3) * 8;
+                current = (current & !(0xFF << shift)) | ((val as u32) << shift);
+                self.pwm.write_u32(word_offset, current);
+            }
             0x1006_0000..=0x1006_0FFF => {
                 let offset = addr - DMA_BASE;
                 let word_offset = offset & !0x3;
@@ -315,6 +347,8 @@ impl Bus {
             0x1003_0000..=0x1003_0FFF => self.spi.read_u32(addr - SPI_BASE),
             0x1004_0000..=0x1004_0FFF => self.i2s.read_u32(addr - I2S_BASE),
             0x1005_0000..=0x1005_0FFF => self.i2c.read_u32(addr - I2C_BASE),
+            0x1008_0000..=0x1008_0FFF => self.adc.read_u32(addr - ADC_BASE),
+            0x1009_0000..=0x1009_0FFF => self.pwm.read_u32(addr - PWM_BASE),
             0x1006_0000..=0x1006_0FFF => self.dma.read_u32(addr - DMA_BASE),
             0x1007_0000..=0x1007_0FFF => self.wdt.read_u32(addr - WDT_BASE),
             _ => 0,
@@ -337,6 +371,8 @@ impl Bus {
             0x1003_0000..=0x1003_0FFF => self.spi.write_u32(addr - SPI_BASE, val),
             0x1004_0000..=0x1004_0FFF => self.i2s.write_u32(addr - I2S_BASE, val),
             0x1005_0000..=0x1005_0FFF => self.i2c.write_u32(addr - I2C_BASE, val),
+            0x1008_0000..=0x1008_0FFF => self.adc.write_u32(addr - ADC_BASE, val),
+            0x1009_0000..=0x1009_0FFF => self.pwm.write_u32(addr - PWM_BASE, val),
             0x1006_0000..=0x1006_0FFF => self.dma.write_u32(addr - DMA_BASE, val),
             0x1007_0000..=0x1007_0FFF => self.wdt.write_u32(addr - WDT_BASE, val),
             _ => {}

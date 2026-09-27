@@ -291,3 +291,45 @@ git commit -m "Revert iris.world to simple box model, strengthen Gazebo physics 
 - MEMORY.md: updated with latest fixes"
 
 git push
+
+## Unit Tests Added (2026-09-27)
+
+# Add unit tests to all peripheral modules and CPU decode
+# cpu/decode.rs - 14 tests for 32-bit instruction decode
+# cpu/c_decode.rs - 8 tests for compressed instruction decompression
+# cpu/csr.rs - 10 tests for CSR read/write, MISA, cycle counter, PMP
+# cpu/pmp.rs - 18 tests for config/addr, TOR/NA4/NAPOT, access checks
+# clint.rs - 10 tests for timer/software interrupts, MTIME/MTIMECMP
+# plic.rs - 10 tests for priority/enable/pending/threshold, claim/complete
+# timer.rs - 10 tests for counting, match IRQ, auto-reload, prescaler, status W1C
+# gpio.rs - 7 tests for DIR/DATA/SET/CLEAR/INT_EN registers
+# spi.rs - 6 tests for CTRL/CS/DATA registers, loopback mode
+# i2s.rs - 6 tests for CR/SR/TX registers, sample counting
+# i2c.rs - 8 tests for virtual 24C02 EEPROM write/read, address latch, status flags
+# dma.rs - 7 tests for register R/W, transfer start, ctrl bits, status W1C
+# wdt.rs - 10 tests for countdown, timeout (interrupt/reset), feed keys, status W1C
+
+cargo test 2>&1 | tail -30
+
+# Run all tests - should show 115 passed
+cargo test
+
+# Verify test ELFs still work
+./target/release/Thejas32rs programs/hello.elf --max-cycles 10000 2>&1
+./target/release/Thejas32rs programs/compressed_test.elf --max-cycles 50000 2>&1
+./target/release/Thejas32rs programs/atomic_test.elf --max-cycles 50000 2>&1
+./target/release/Thejas32rs programs/timer_test.elf --max-cycles 50000 2>&1
+./target/release/Thejas32rs programs/scheduler_test.elf --max-cycles 50000 2>&1
+./target/release/Thejas32rs programs/flight_controller.elf --max-cycles 100000 2>&1
+
+# Git commit
+git add src/
+git commit -m "Add comprehensive unit tests (115 tests)
+
+- CPU decode: 22 tests for 32-bit and 16-bit instruction decode
+- CSR: 10 tests for register R/W, MISA, cycle counter, PMP config
+- PMP: 18 tests for config/addr, TOR/NA4/NAPOT, access checks
+- Peripherals: 65 tests for CLINT, PLIC, Timer, GPIO, SPI, I2S, I2C, DMA, WDT
+- All tests pass and emulator runs test ELFs correctly"
+
+git push

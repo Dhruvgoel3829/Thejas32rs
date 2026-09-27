@@ -7,6 +7,8 @@ import math
 
 SPI_SOCK_PATH  = "/tmp/thejas_spi.sock"
 GPIO_SOCK_PATH = "/tmp/thejas_gpio.sock"
+I2C_SOCK_PATH  = "/tmp/thejas_i2c.sock"
+UART_SOCK_PATH = "/tmp/thejas_uart.sock"
 GAZEBO_IMU_PORT = 9002
 GAZEBO_MOTOR_PORT = 9003
 
@@ -16,11 +18,20 @@ latest_imu = {
     "gx": 0, "gy": 0, "gz": 0
 }
 
+# I2C sensor data (from Gazebo)
+latest_baro = {"pressure": 101325.0, "temperature": 25.0, "altitude": 0.0}
+latest_compass = {"mx": 0.0, "my": 0.0, "mz": 0.0}
+latest_gps = {"lat": 0.0, "lon": 0.0, "alt": 0.0, "vel_n": 0.0, "vel_e": 0.0, "vel_d": 0.0, "fix": 3, "sats": 10}
+
 motor_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 motor_addr = ("127.0.0.1", GAZEBO_MOTOR_PORT)
 
 # Synthetic IMU for testing without Gazebo
 synthetic_tick = 0
+
+# UART buffer for NMEA/telemetry output
+uart_output_buffer = []
+uart_buffer_lock = threading.Lock()
 
 def recv_exact(sock, n):
     buf = bytearray()
@@ -190,14 +201,177 @@ def motor_worker():
         client.close()
         motor_sock.close()
 
+# -------------------------------------------------------------
+# 4. I2C Socket Server (Virtual I2C Sensors: Baro, Compass, GPS)
+# -------------------------------------------------------------
+def i2c_sensor_server():
+    print("[I2C-SERVER] Starting...")
+    client = connect_socket(I2C_SOCK_PATH, "I2C")
+    print("[I2C-SERVER] Connected, entering main loop")
+
+    # Protocol from emulator:
+    # Write: [0x00, addr, reg, data]
+    # Read:  [0x01, addr, reg] -> response: [data]
+    current_addr = 0
+    current_reg = 0
+
+    try:
+        while True:
+            hdr = recv_exact(client, 1)
+            if not hdr: break
+            op_type = hdr[0]
+
+            if op_type == 0x00:  # Write
+                payload = recv_exact(client, 3)
+                if not payload: break
+                addr, reg, data = payload[0], payload[1], payload[2]
+                current_addr = addr
+                current_reg = reg
+
+                # Handle writes to external I2C sensors
+                if addr == 0x77:  # MS5611 Barometer
+                    # MS5611 commands: 0x1E (reset), 0x40-0x46 (D1/D2 conversions), 0xA0-0xAE (PROM reads)
+                    pass
+                elif addr == 0x1E:  # HMC5883L Compass
+                    # HMC5883L registers
+                    pass
+                elif addr == 0x42:  # GPS (common I2C address)
+                    # GPS registers
+                    pass
+
+            elif op_type == 0x01:  # Read
+                payload = recv_exact(client, 2)
+                if not payload: break
+                addr, reg = payload[0], payload[1]
+                current_addr = addr
+                current_reg = reg
+
+                # Handle reads from external I2C sensors
+                response = 0x00
+
+                if addr == 0x77:  # MS5611 Barometer
+                    with physics_lock:
+                        if reg == 0x00:  # PROM read (simplified)
+                            response = 0x00
+                        else:
+                            # Return pressure/temperature data
+                            # MS5611 returns 24-bit pressure, 24-bit temp
+                            pressure = int(latest_baro["pressure"] * 100)  # Pa to cPa
+                            response = (pressure >> 16) & 0xFF if reg == 0x00 else \
+                                       (pressure >> 8) & 0xFF if reg == 0x01 else \
+                                       pressure & 0xFF
+
+                elif addr == 0x1E:  # HMC5883L Compass
+                    with physics_lock:
+                        # HMC5883L data registers: 0x03-0x08 (X, Z, Y MSB/LSB)
+                        mx = int(latest_compass["mx"] * 1000)
+                        my = int(latest_compass["my"] * 1000)
+                        mz = int(latest_compass["mz"] * 1000)
+                        if reg == 0x03:
+                            response = (mx >> 8) & 0xFF
+                        elif reg == 0x04:
+                            response = mx & 0xFF
+                        elif reg == 0x05:
+                            response = (mz >> 8) & 0xFF
+                        elif reg == 0x06:
+                            response = mz & 0xFF
+                        elif reg == 0x07:
+                            response = (my >> 8) & 0xFF
+                        elif reg == 0x08:
+                            response = my & 0xFF
+                        elif reg == 0x0A:  # Status
+                            response = 0x01  # Data ready
+                        elif reg == 0x0B:  # Config A
+                            response = 0x70  # 8 samples, 15Hz, normal
+                        elif reg == 0x0C:  # Config B
+                            response = 0xA0  # Gain = 5
+                        elif reg == 0x0D:  # Mode
+                            response = 0x00  # Continuous
+
+                elif addr == 0x42:  # GPS (common I2C)
+                    with physics_lock:
+                        # GPS returns NMEA-like data or binary format
+                        # Simplified: return lat/lon as bytes
+                        lat = int(latest_gps["lat"] * 1e7)
+                        lon = int(latest_gps["lon"] * 1e7)
+                        alt = int(latest_gps["alt"] * 1000)
+                        if reg == 0x00:
+                            response = (lat >> 24) & 0xFF
+                        elif reg == 0x01:
+                            response = (lat >> 16) & 0xFF
+                        elif reg == 0x02:
+                            response = (lat >> 8) & 0xFF
+                        elif reg == 0x03:
+                            response = lat & 0xFF
+                        elif reg == 0x04:
+                            response = (lon >> 24) & 0xFF
+                        elif reg == 0x05:
+                            response = (lon >> 16) & 0xFF
+                        elif reg == 0x06:
+                            response = (lon >> 8) & 0xFF
+                        elif reg == 0x07:
+                            response = lon & 0xFF
+
+                client.sendall(bytes([response]))
+
+    except (BrokenPipeError, ConnectionResetError):
+        pass
+    finally:
+        client.close()
+
+# -------------------------------------------------------------
+# 5. UART Socket Server (Virtual UART: GPS NMEA, Telemetry)
+# -------------------------------------------------------------
+def uart_server():
+    print("[UART-SERVER] Starting...")
+    client = connect_socket(UART_SOCK_PATH, "UART")
+    print("[UART-SERVER] Connected, entering main loop")
+
+    try:
+        while True:
+            # Read byte from emulator (written to THR)
+            payload = recv_exact(client, 1)
+            if not payload:
+                break
+            byte = payload[0]
+
+            # Echo back for local terminal (emulator writes to THR, we can log it)
+            # For GPS NMEA output, we can inject NMEA sentences here
+            # The emulator reads from RHR, so we need to provide data when read
+
+            # Log the byte sent by emulator (for telemetry debugging)
+            if 32 <= byte <= 126:  # Printable ASCII
+                with uart_buffer_lock:
+                    uart_output_buffer.append(chr(byte))
+                    if len(uart_output_buffer) > 1000:
+                        uart_output_buffer = uart_output_buffer[-1000:]
+
+            # Acknowledge receipt (for flow control)
+            client.sendall(b'\x00')
+
+    except (BrokenPipeError, ConnectionResetError):
+        pass
+    finally:
+        client.close()
+
+def nmea_sender():
+    """Periodically send GPS NMEA sentences to UART RX buffer"""
+    # This would be called from the I2C server or separately
+    # For now, we handle GPS via I2C
+    pass
+
 def main():
     t_udp = threading.Thread(target=udp_imu_receiver, daemon=True)
     t_spi = threading.Thread(target=spi_imu_server, daemon=True)
     t_motor = threading.Thread(target=motor_worker, daemon=True)
+    t_i2c = threading.Thread(target=i2c_sensor_server, daemon=True)
+    t_uart = threading.Thread(target=uart_server, daemon=True)
 
     t_udp.start()
     t_spi.start()
     t_motor.start()
+    t_i2c.start()
+    t_uart.start()
 
     try:
         while True:
