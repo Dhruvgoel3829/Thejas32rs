@@ -11,7 +11,7 @@ Cycle-accurate **RV32IM** RISC-V SoC emulator in Rust implementing the custom **
 - 12 peripherals memory-mapped
 - GDB stub over TCP with hardware breakpoints
 
-## Current State (as of commit 3b2e1d4)
+## Current State (as of commit e86e32a)
 
 ### Completed Features
 | Component | Status |
@@ -35,6 +35,7 @@ Cycle-accurate **RV32IM** RISC-V SoC emulator in Rust implementing the custom **
 | ELF Loader (goblin) | ✅ Complete |
 | Scheduler Test (preemptive RTOS) | ✅ Working |
 | Flight Controller (SPI IMU + PID) | ✅ Working |
+| **Unit Tests (115 tests)** | ✅ Complete |
 
 ### Memory Map
 ```
@@ -98,16 +99,24 @@ python3 tools/sitl_bridge.py
 ## Known Gaps / Unimplemented
 
 ### CPU Instructions (src/cpu/mod.rs)
-1. **LOAD funct3=3,6,7** - FLW, reserved (line 495)
-2. **STORE funct3=3-7** - FSW, reserved (line 518)
-3. **R/M type** - Some MUL/DIV/REM combos (line 441)
-4. **AMO funct5** - Some variants (line 627)
-5. **Unknown opcodes** - Catch-all (line 635)
+All standard RV32IM + RV32A + RV32C instructions implemented:
+- RV32M: MUL, MULH, MULHSU, MULHU, DIV, DIVU, REM, REMU
+- RV32A: LR.W, SC.W, AMOSWAP, AMOADD, AMOXOR, AMOAND, AMOOR, AMOMIN, AMOMAX, AMOMINU, AMOMAXU
+- RV32C: Full decompression
 
-### Recently Fixed (2026-09-25)
+Reserved/unknown opcodes now trap with illegal instruction (cause 2) instead of panicking:
+- LOAD funct3=3,6,7 (FLW - FPU, not in THEJAS32)
+- STORE funct3=3-7 (FSW - FPU, not in THEJAS32)
+- Reserved R/M type combinations
+- Reserved AMO funct5 variants
+- Unknown opcodes
+
+### Recently Fixed (2026-09-27)
 - ✅ **System funct12=0x121** - SFENCE.VMA (implemented as no-op, no virtual memory)
 - ✅ **CSR funct3=0x4** - Reserved SYSTEM funct3 now traps with illegal instruction (cause 2)
 - ✅ **ELF Loading Bug** - Fixed PT_LOAD segment handling for segments overlapping RAM (including BSS-only segments with filesz=0). All test programs now load correctly.
+- ✅ **Unit Test Suite** - Added 115 comprehensive unit tests covering CPU decode, CSR/PMP, and all peripherals
+- ✅ **Illegal Instruction Traps** - All unimplemented!() macros replaced with proper illegal instruction traps (cause 2, mtval = instruction). Unknown/reserved opcodes now trap gracefully instead of panicking.
 
 ### Missing Architecture Features
 - RV32F/D (FPU) - not in scope (RV32IM only)
@@ -119,8 +128,12 @@ python3 tools/sitl_bridge.py
 - Unused constants: `*_SIZE` in all peripheral modules, `CSR_PMPCFG1/2/3` in csr.rs
 
 ### Testing
-- **Zero unit tests** (cargo test runs 0 tests)
-- Integration testing only via manual ELF execution
+- **115 unit tests** passing (cargo test)
+  - CPU decode: 22 tests (RV32I, M, A, C, System mnemonics)
+  - CSR: 10 tests (read/write, MISA, cycle, PMP config/addr)
+  - PMP: 18 tests (config/addr R/W, TOR/NA4/NAPOT, access checks)
+  - Peripherals: 65 tests (CLINT, PLIC, Timer, GPIO, SPI, I2S, I2C, DMA, WDT)
+- Integration testing via manual ELF execution (hello, compressed, atomic, timer, scheduler, flight controller, etc.)
 
 ## Project Structure
 ```
@@ -206,11 +219,11 @@ loop {
 | clap | 4.5 | CLI parsing |
 
 ## Next Priority Tasks
-1. Remove dead code (ipc.rs, unused constants)
-2. Add unit tests for CPU instructions and peripherals
-3. Complete remaining unimplemented instructions (FPU loads/stores, some MUL/DIV/REM, AMO variants)
-4. Consider FPU if RV32IMF desired
-5. ✅ **Build and test Gazebo plugin** (`gazebo/build/`) with `gzserver` — DONE
+1. Remove dead code (`RawModeGuard`, unused `*_SIZE` constants, `CSR_PMPCFG1/2/3` individual constants)
+2. Consider FPU if RV32IMF desired
+3. ✅ **Build and test Gazebo plugin** (`gazebo/build/`) with `gzserver` — DONE
+4. ✅ **Add unit tests for CPU instructions and peripherals** — DONE (115 tests)
+5. ✅ **Illegal instruction traps** — DONE (unknown opcodes trap with cause 2)
 
 ## IPC-Based External Integration (AI-in-the-Loop Drone Firmware Development)
 

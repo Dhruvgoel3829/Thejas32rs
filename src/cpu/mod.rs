@@ -447,7 +447,11 @@ impl Cpu {
                         // REMU
                         if s2 == 0 { s1 } else { s1 % s2 }
                     }
-                    _ => unimplemented!("Unsupported R/M type: {inst:?}"),
+                    _ => {
+                        self.csr.mtval = inst.0;
+                        self.handle_trap(2, self.pc);
+                        return;
+                    }
                 };
                 self.write_reg(inst.rd(), res);
             }
@@ -501,7 +505,11 @@ impl Cpu {
                     0x2 => self.bus.read_u32(addr),                      // LW
                     0x4 => self.bus.read_u8(addr) as u32,                // LBU
                     0x5 => self.bus.read_u16(addr) as u32,               // LHU
-                    _ => unimplemented!("Unsupported LOAD funct3: {:#x}", inst.funct3()),
+                    _ => {
+                        self.csr.mtval = inst.0;
+                        self.handle_trap(2, self.pc);
+                        return;
+                    }
                 };
                 self.write_reg(inst.rd(), val);
             }
@@ -524,7 +532,11 @@ impl Cpu {
                     0x0 => self.bus.write_u8(addr, val as u8),
                     0x1 => self.bus.write_u16(addr, val as u16),
                     0x2 => self.bus.write_u32(addr, val),
-                    _ => unimplemented!("Unsupported STORE funct3: {:#x}", inst.funct3()),
+                    _ => {
+                        self.csr.mtval = inst.0;
+                        self.handle_trap(2, self.pc);
+                        return;
+                    }
                 }
                 self.atomic_reservation = None;
             }
@@ -633,19 +645,19 @@ impl Cpu {
                         self.write_reg(inst.rd(), orig);
                     }
 
-                    _ => unimplemented!(
-                        "Unsupported RV32A funct5: {:#b} at PC {:#x}",
-                        funct5,
-                        self.pc
-                    ),
+                    _ => {
+                        self.csr.mtval = inst.0;
+                        self.handle_trap(2, self.pc);
+                        return;
+                    }
                 }
             }
 
-            _ => unimplemented!(
-                "Opcode {:#x} not implemented at PC {:#x}",
-                inst.opcode(),
-                self.pc
-            ),
+            _ => {
+                self.csr.mtval = inst.0;
+                self.handle_trap(2, self.pc);
+                return;
+            },
         }
 
         self.pc = next_pc;
