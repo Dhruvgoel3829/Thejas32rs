@@ -1,0 +1,250 @@
+# ============================================================================
+# VEGA (ARIES v3) Board Hardware Definition for ArduPilot
+# ============================================================================
+# Based on NIDAR VEGAPilot Mission Brief requirements
+# Emulator peripheral map reference:
+#   SPI (IMU)      -> /tmp/thejas_spi.sock   (UDP 9002)
+#   I2C (Sensors)  -> /tmp/thejas_i2c.sock   (UDP 9002)
+#   UART (Telemetry) -> /tmp/thejas_uart.sock (UDP 9002)
+#   ADC (Analog)   -> /tmp/thejas_adc.sock   (UDP 9002)
+#   PWM (Servos)   -> /tmp/thejas_pwm.sock   (UDP 9002)
+#   GPIO (Motors)  -> /tmp/thejas_gpio.sock  (UDP 9003)
+#
+# Pin assignments below are PLACEHOLDERS - REPLACE WITH ACTUAL VEGA PINOUT
+# Refer to VEGA datasheet and ARIES v3 schematic for actual pin numbers
+# ============================================================================
+
+# ============================================================================
+# BOARD IDENTIFICATION
+# ============================================================================
+.name                       VEGA
+.board_type                 99          # Custom board type (99 = custom)
+.cpu                        VEGA        # Processor name
+.mcu                        RISCV       # Architecture
+
+# ============================================================================
+# MEMORY & CLOCK CONFIGURATION
+# ============================================================================
+.clock_freq                 100000000   # 100 MHz (adjust per VEGA spec)
+.flash_size                 0           # No internal flash (external QSPI)
+.ram_size                   524288      # 512 KB SRAM (0x80000 bytes)
+.eeprom_size                0           # No internal EEPROM
+
+# ============================================================================
+# UART CONFIGURATION
+# ============================================================================
+# UART0: GCS Telemetry (Mission Planner) - MAVLink @ 115200/57600
+.uartA_tx                   GPIO_XX     # TODO: VEGA pin for UART0 TX
+.uartA_rx                   GPIO_XX     # TODO: VEGA pin for UART0 RX
+.uartA_baud                 115200
+
+# UART1: GNSS Module (u-blox NMEA) @ 115200/9600
+.uartB_tx                   GPIO_XX     # TODO: VEGA pin for UART1 TX
+.uartB_rx                   GPIO_XX     # TODO: VEGA pin for UART1 RX
+.uartB_baud                 115200
+
+# UART2: RC Receiver / Secondary Telemetry
+.uartC_tx                   GPIO_XX     # TODO: VEGA pin for UART2 TX
+.uartC_rx                   GPIO_XX     # TODO: VEGA pin for UART2 RX
+.uartC_baud                 115200
+
+# ============================================================================
+# SPI CONFIGURATION
+# ============================================================================
+# SPI0: Primary IMU (MPU6000/ICM20602) - 10MHz max
+.spiA_sck                   GPIO_XX     # TODO: SPI0 SCK
+.spiA_miso                  GPIO_XX     # TODO: SPI0 MISO
+.spiA_mosi                  GPIO_XX     # TODO: SPI0 MOSI
+.spiA_cs0                   GPIO_XX     # TODO: IMU CS (CS0)
+.spiA_cs1                   GPIO_XX     # TODO: Optional 2nd SPI device
+.spiA_cs2                   GPIO_XX     # TODO: Optional 3rd SPI device
+.spiA_cs3                   GPIO_XX     # TODO: Optional 4th SPI device
+.spiA_dma_rx                0           # DMA channel for RX (0 = none)
+.spiA_dma_tx                0           # DMA channel for TX (0 = none)
+
+# SPI1: Secondary SPI (e.g., external flash, SD card)
+.spiB_sck                   GPIO_XX     # TODO: SPI1 SCK
+.spiB_miso                  GPIO_XX     # TODO: SPI1 MISO
+.spiB_mosi                  GPIO_XX     # TODO: SPI1 MOSI
+.spiB_cs0                   GPIO_XX     # TODO: SPI1 CS0
+.spiB_cs1                   GPIO_XX     # TODO: SPI1 CS1
+.spiB_cs2                   GPIO_XX
+.spiB_cs3                   GPIO_XX
+.spiB_dma_rx                0
+.spiB_dma_tx                0
+
+# ============================================================================
+# I2C CONFIGURATION
+# ============================================================================
+# I2C0: Primary Sensors (Barometer MS5611 @ 0x77, Compass HMC5883L @ 0x1E)
+.i2cA_scl                   GPIO_XX     # TODO: I2C0 SCL
+.i2cA_sda                   GPIO_XX     # TODO: I2C0 SDA
+.i2cA_speed                 400000      # 400kHz fast mode
+
+# I2C1: GPS Module (u-blox @ 0x42) - can share bus or separate
+.i2cB_scl                   GPIO_XX     # TODO: I2C1 SCL
+.i2cB_sda                   GPIO_XX     # TODO: I2C1 SDA
+.i2cB_speed                 100000      # 100kHz standard mode
+
+# I2C2: Optional - Airspeed sensor, rangefinder, etc.
+.i2cC_scl                   GPIO_XX     # TODO: I2C2 SCL
+.i2cC_sda                   GPIO_XX     # TODO: I2C2 SDA
+.i2cC_speed                 100000
+
+# ============================================================================
+# PWM OUTPUT CONFIGURATION (Motor/ESC/Servo Outputs)
+# ============================================================================
+# PWM0-3: Primary ESC outputs (Motor 1-4) - 50Hz/400Hz/DShot
+.pwm_out_1                  GPIO_XX     # TODO: Motor 1 (ESC1) - PWM0
+.pwm_out_2                  GPIO_XX     # TODO: Motor 2 (ESC2) - PWM1
+.pwm_out_3                  GPIO_XX     # TODO: Motor 2 (ESC3) - PWM2
+.pwm_out_4                  GPIO_XX     # TODO: Motor 4 (ESC4) - PWM3
+
+# PWM4-7: Servo outputs (optional) - 50Hz
+.pwm_out_5                  GPIO_XX     # TODO: Servo 1 - PWM4
+.pwm_out_6                  GPIO_XX     # TODO: Servo 2 - PWM5
+.pwm_out_7                  GPIO_XX     # TODO: Servo 3 - PWM6
+.pwm_out_8                  GPIO_XX     # TODO: Servo 4 - PWM7
+
+# PWM Configuration
+.pwm_freq                   400         # ESC frequency (400Hz for multirotor)
+.pwm_max                    2000        # Max pulse width (us)
+.pwm_min                    1000        # Min pulse width (us)
+.pwm_rate                   400         # Update rate (Hz)
+
+# DShot Configuration (if supported)
+.dshot_type                 600         # DShot600 (or 300/1200)
+.dshot_bidir                0           # Bidirectional DShot (0/1)
+
+# ============================================================================
+# ADC CONFIGURATION (Analog Inputs)
+# ============================================================================
+# ADC0: Battery Voltage (divider) - 0-3.3V -> 0-12S LiPo
+.adc_ch0                    ADC_XX      # TODO: ADC channel 0 - Battery Voltage
+.adc_ch1                    ADC_XX      # TODO: ADC channel 1 - Current Sensor
+.adc_ch2                    ADC_XX      # TODO: ADC channel 2 - RSSI / Spare
+.adc_ch3                    ADC_XX      # TODO: ADC channel 3 - Spare
+.adc_ch4                    ADC_XX      # TODO: ADC channel 4 - Spare
+.adc_ch5                    ADC_XX      # TODO: ADC channel 5 - Spare
+.adc_ch6                    ADC_XX      # TODO: ADC channel 6 - Spare
+.adc_ch7                    ADC_XX      # TODO: ADC channel 7 - Spare
+
+# ADC Calibration (board-specific voltage divider ratios)
+.battery_voltage_pin        0           # ADC channel for battery voltage
+.current_pin                1           # ADC channel for current sensor
+.battery_voltage_mult       12.3        # Voltage divider ratio (adjust per HW)
+.current_amp_per_volt       20.0        # Current sensor scaling (A/V)
+.current_offset             0.0         # Current sensor zero offset
+
+# ============================================================================
+# GPIO CONFIGURATION
+# ============================================================================
+# Status LEDs
+.gpio_led_1                 GPIO_XX     # TODO: Status LED 1 (Green)
+.gpio_led_2                 GPIO_XX     # TODO: Status LED 2 (Blue)
+.gpio_led_3                 GPIO_XX     # TODO: Status LED 3 (Red)
+
+# Safety Switch
+.gpio_safety_switch         GPIO_XX     # TODO: Safety switch input (active low)
+
+# Buzzer
+.gpio_buzzer                GPIO_XX     # TODO: Buzzer output
+
+# SPI Chip Selects (if using GPIO for CS)
+.gpio_spi_cs0               GPIO_XX     # TODO: SPI0 CS0 (IMU)
+.gpio_spi_cs1               GPIO_XX     # TODO: SPI0 CS1 (optional)
+
+# I2C Bus Recovery (optional)
+.gpio_i2c0_scl              GPIO_XX     # TODO: I2C0 SCL (for bit-bang recovery)
+.gpio_i2c0_sda              GPIO_XX     # TODO: I2C0 SDA (for bit-bang recovery)
+
+# ============================================================================
+# EXTERNAL INTERRUPTS
+# ============================================================================
+# IMU Data Ready interrupt
+.ext_int_imu_drdy           GPIO_XX     # TODO: IMU DRDY pin
+
+# Safety Switch interrupt
+.ext_int_safety             GPIO_XX     # TODO: Safety switch interrupt
+
+# RC Input Capture (if not using dedicated RC input peripheral)
+.rc_in_1                    GPIO_XX     # TODO: RC Channel 1
+.rc_in_2                    GPIO_XX     # TODO: RC Channel 2
+.rc_in_3                    GPIO_XX     # TODO: RC Channel 3
+.rc_in_4                    GPIO_XX     # TODO: RC Channel 4
+.rc_in_5                    GPIO_XX     # TODO: RC Channel 5
+.rc_in_6                    GPIO_XX     # TODO: RC Channel 6
+.rc_in_7                    GPIO_XX     # TODO: RC Channel 7
+.rc_in_8                    GPIO_XX     # TODO: RC Channel 8
+
+# ============================================================================
+# ANALOG INPUT MAPPING (for Mission Planner)
+# ============================================================================
+# Maps ADC channels to Mission Planner parameters
+.batt_monitor               ANALOG_0    # Battery voltage on ADC0
+.current_monitor            ANALOG_1    # Current on ADC1
+.rssi_monitor               ANALOG_2    # RSSI on ADC2
+
+# ============================================================================
+# SERIAL PORT MAPPING
+# ============================================================================
+# Maps logical serial ports to physical UARTs
+.serial0_device             uartA       # GCS Telemetry
+.serial1_device             uartB       # GNSS
+.serial2_device             uartC       # RC / Secondary
+.serial3_device             uartD       # Debug console (if available)
+
+# ============================================================================
+# FLASH / STORAGE
+# ============================================================================
+# QSPI Flash (external)
+.flash_cs                   GPIO_XX     # TODO: QSPI CS
+.flash_sck                  GPIO_XX     # TODO: QSPI SCK
+.flash_mosi                 GPIO_XX     # TODO: QSPI MOSI
+.flash_miso                 GPIO_XX     # TODO: QSPI MISO
+.flash_io2                  GPIO_XX     # TODO: QSPI IO2 (quad mode)
+.flash_io3                  GPIO_XX     # TODO: QSPI IO3 (quad mode)
+
+# SD Card (if available)
+.sdcard_cs                  GPIO_XX     # TODO: SD card CS
+.sdcard_detect              GPIO_XX     # TODO: SD card detect
+
+# ============================================================================
+# BOOTLOADER / BOOT CONFIGURATION
+# ============================================================================
+.bootloader_cs              GPIO_XX     # TODO: Bootloader select pin
+.boot_mode_pin              GPIO_XX     # TODO: Boot mode select
+
+# ============================================================================
+# POWER MANAGEMENT
+# ============================================================================
+.power_brick_valid          GPIO_XX     # TODO: Power brick valid signal
+.power_brick_current        ADC_XX      # TODO: Power brick current ADC
+.power_brick_voltage        ADC_XX      # TODO: Power brick voltage ADC
+
+# ============================================================================
+# EMULATOR REFERENCE MAPPING (for SITL testing)
+# ============================================================================
+# These map to the emulator's Unix sockets:
+#   SPI (IMU)      -> /tmp/thejas_spi.sock   -> UDP 9002 (IMU data)
+#   I2C (Sensors)  -> /tmp/thejas_i2c.sock   -> UDP 9002 (I2C data)
+#   UART (Telem)   -> /tmp/thejas_uart.sock  -> UDP 9002 (UART data)
+#   ADC            -> /tmp/thejas_adc.sock   -> UDP 9002 (ADC data)
+#   PWM            -> /tmp/thejas_pwm.sock   -> UDP 9002 (PWM data)
+#   GPIO (Motors)  -> /tmp/thejas_gpio.sock  -> UDP 9003 (motor cmds)
+#
+# When running SITL, the emulator will connect to these sockets.
+# The hwdef.dat pins above map to the actual VEGA hardware pins.
+# For SITL, the emulator simulates the peripheral behavior.
+
+# ============================================================================
+# NOTES FOR VEGA PORT
+# ============================================================================
+# 1. VEGA is RV32IMAC (32-bit RISC-V with M, A, C extensions)
+# 2. ArduPilot uses ChibiOS on RISC-V - ensure ChibiOS VEGA port exists
+# 3. Memory: 512KB SRAM (tight for EKF - may need optimization)
+# 4. Clock: 100MHz typical (verify in VEGA datasheet)
+# 5. No internal flash - boot from QSPI
+# 6. All pins marked TODO must be filled from VEGA pinout
+# 6. Test with emulator SITL first: ./Thejas32rs firmware.elf --ipc
+# ============================================================================
