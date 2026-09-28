@@ -334,7 +334,7 @@ No remaining tasks within THEJAS32 scope. Project is feature-complete for its de
 |------|--------|-------|
 | **hwdef.dat template** | ✅ Complete | All peripherals mapped, pins as TODO |
 | **board_config.h template** | ✅ Complete | Clock, memory, peripheral config |
-| **board.c** | ⏳ Next | Peripheral init (SPI, I2C, UART, PWM, ADC) |
+| **board.c template** | ✅ Complete | Peripheral init (SPI, I2C, UART, PWM, ADC, GPIO) |
 | **ChibiOS VEGA port** | ⏳ Pending | Verify/port ChibiOS for VEGA |
 | **ArduPilot build** | ⏳ Pending | ./waf configure --board=vega |
 | **SITL testing** | ⏳ Pending | Test with emulator --ipc |
@@ -443,6 +443,90 @@ python3 tools/sitl_bridge.py
 - Cross-compile test programs with `riscv-none-elf-gcc -march=rv32imac_zicsr -mabi=ilp32`
 - Gazebo SITL integration: External Python bridges via Unix sockets (core emulator is Gazebo-free)
 - Flight controller uses SPI for MPU-6000 IMU + GPIO for motor outputs
+
+## VEGA Pilot Firmware Progress (as of 2026-09-28)
+
+### Milestone 0: Audit and Scaffolding - ✅ COMPLETE
+- **AUDIT.md** created at `docs/AUDIT.md` with full emulator analysis
+- **firmware/** directory structure created per spec Section 3
+- **Makefile** builds both RV32 target (`build/rv32/firmware.elf`) and host test target (`build/host/test_runner`)
+- **Headers created**: config.h, types.h, sched.h, state.h, ctrl_stub.h, hal/*.h, hal_vega/regs.h
+- **HAL interfaces defined**: imu.h, baro.h, mag.h, gnss.h, adc.h, pwm.h, rc.h, uart.h, gpio.h, flash.h, time.h
+- **Emulator HAL implementations**: time.c, uart.c, gpio.c, spi.c (IMU), i2c.c (baro/mag), adc.c, pwm.c, gnss.c, rc.c
+- **Core modules**: main.c (scheduler + tasks), sched.c, state/state.c, ctrl_stub/ctrl_stub.c (placeholder)
+- **Host unit tests**: 5 tests passing (scheduler, state init, ctrl stub, setpoints, param bounds)
+- **Verified**: `make rv32` builds ELF; `make test` runs and passes; emulator runs firmware for 100K cycles
+
+### Firmware Build Configuration
+```
+# Toolchain
+RV_CC := riscv-none-elf-gcc -march=rv32imac_zicsr -mabi=ilp32
+HOST_CC := gcc -m64
+
+# Memory budget
+SRAM_BUDGET_BYTES := 256 KB (real hardware)
+Stack reserve := 32 KB
+
+# Scheduler rates (from config.h)
+Control loop:      1000 Hz (1000 µs)
+State estimate:    1000 Hz
+Mode/Failsafe:     50 Hz
+MAVLink RX:        100 Hz
+MAVLink TX:        10 Hz
+Logger:            10 Hz
+```
+
+### Project Structure (firmware/)
+```
+firmware/
+├── Makefile
+├── link.ld              # 256 KB RAM at 0x8000_0000
+├── crt0.s               # Stack at 0x8004_0000
+├── include/
+│   ├── config.h         # All tunables, limits, defaults
+│   ├── types.h          # Common types (status_t, time_us_t, etc.)
+│   ├── sched.h          # sched_task_t, sched_run()
+│   ├── state.h          # vehicle_state_t, setpoints_t, motor_out_t, ctrl_interface_t
+│   ├── ctrl_stub.h      # Placeholder controller interface
+│   ├── hal/             # HAL interface headers (no impl)
+│   │   ├── imu.h, baro.h, mag.h, gnss.h, adc.h
+│   │   ├── pwm.h, rc.h, uart.h, gpio.h, flash.h, time.h
+│   ├── hal_vega/regs.h  # Single source of truth for register addresses
+│   └── hal/time_host.h  # Host test time mock helpers
+├── src/
+│   ├── main.c           # Scheduler loop, task registration
+│   ├── sched.c          # Cooperative fixed-rate scheduler
+│   ├── state/state.c    # Vehicle state + sensor update stubs
+│   ├── ctrl_stub/ctrl_stub.c  # Placeholder controller (to be replaced by human)
+│   ├── hal_emu/         # Emulator-backed HAL implementations
+│   │   ├── time.c       # CLINT mtime + CSR mcycle (hi/lo/hi read)
+│   │   ├── uart.c       # 16550-style blocking TX, non-blocking RX
+│   │   ├── gpio.c       # GPIO via MMIO
+│   │   ├── spi.c        # IMU (MPU-6000/ICM-20602) via SPI
+│   │   ├── i2c.c        # MS5611 baro + HMC5883L mag via I2C
+│   │   ├── adc.c        # Battery, current, RSSI via ADC
+│   │   ├── pwm.c        # ESC outputs via PWM
+│   │   ├── gnss.c       # NMEA parser stub
+│   │   └── rc.c         # SBUS/CRSF parser stub
+│   └── hal_vega/        # Placeholder for real hardware HAL
+├── tests/host/test_main.c  # 5 unit tests
+└── tools/               # For uart_tcp_bridge.py (M4)
+```
+
+### Key Design Decisions
+1. **Pure C11, no stdlib** - `-nostdlib -fno-builtin`, links libgcc for soft-float
+2. **Portable core** - All logic modules compile on host (x86-64) and target (RV32)
+3. **Static allocation only** - No malloc/free, fixed-size buffers in config.h
+4. **HAL abstraction** - `hal_emu/` for emulator, `hal_vega/` for real hardware
+5. **Register addresses** only in `include/hal_vega/regs.h` (from emulator memory map)
+6. **Controller seam** - `ctrl_interface_t` with init/update/reset; stub keeps demos running
+
+### Next: Milestone 1 (Scheduler, Time, Profiling)
+- [ ] UART ring buffers (non-blocking TX with backpressure)
+- [ ] Cycle profiling via `mcycle` - per-task min/avg/max/overruns
+- [ ] Safe 64-bit time reads (hi/lo/hi re-read loop)
+- [ ] Microbenchmark table: float + - * /, sqrtf, sinf, cosf, atan2f cycles
+- [ ] Demo with dummy tasks at different rates on emulator
 
 ## Gazebo Peripheral Exposure Status (as of 2026-09-27)
 
