@@ -191,22 +191,27 @@ static void task_logger(void *arg) {
     g_vehicle_state.stack_hwm_bytes = hwm;
 }
 
-/* Stack high-water mark scan */
+/* Stack high-water mark scan
+ * Stack grows DOWN from __stack_top. Paint region is from __bss_end (low) to __stack_top (high).
+ * Scan from LOW end (__bss_end) upward toward __stack_top.
+ * Find the LOWEST address (deepest penetration) that has been overwritten (paint != 0xDEADBEEF).
+ * That address gives the historical maximum stack depth. Report bytes from that address to __stack_top.
+ */
 static uint32_t stack_high_water_mark(void) {
     extern uint32_t __stack_top;
     extern uint32_t __bss_end;
     uint32_t *stack_ptr = (uint32_t *)&__bss_end;
     uint32_t *stack_top = (uint32_t *)&__stack_top;
-    uint32_t min_free = (uint32_t)stack_top - (uint32_t)stack_ptr;
+    uint32_t max_used = 0;  /* historical maximum stack usage in bytes */
 
     while (stack_ptr < stack_top) {
         if (*stack_ptr != 0xDEADBEEF) {
             uint32_t used = (uint32_t)stack_top - (uint32_t)stack_ptr;
-            if (used < min_free) min_free = used;
+            if (used > max_used) max_used = used;  /* keep DEEPEST (largest used) */
         }
         stack_ptr++;
     }
-    return min_free;
+    return max_used;  /* bytes from deepest overwritten address to __stack_top */
 }
 
 static void sched_add_task(sched_task_fn fn, uint32_t period_us, const char *name) {
