@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-28  
 **Auditor:** opencode agent  
-**Emulator Version:** Thejas32rs (commit from MEMORY.md)
+**Emulator Version:** Thejas32rs (commit `28456f72d7bfd4c5c88c1d3f6bfc7f5910a50819`)
 
 ---
 
@@ -178,6 +178,26 @@ All IPC uses Unix domain sockets (`SOCK_STREAM`) at paths under `/tmp/thejas_*.s
 
 ### PWM (`/tmp/thejas_pwm.sock`)
 **From Emulator → Bridge:** `[op, channel, val[0], val[1], val[2], val[3]]` (val = LE u32)
+
+---
+
+## 3.5 Sensor-Coverage Matrix (Gazebo/Bridge Simulation)
+
+The following table documents what the Gazebo/bridge side actually simulates for each required sensor. This is critical for validating firmware sensor drivers before hardware availability.
+
+| Sensor | Emulator/IPC Interface | Gazebo Plugin | Python Bridge (`sitl_bridge.py`) | Notes |
+|--------|------------------------|---------------|-----------------------------------|-------|
+| **IMU (MPU-6000/ICM-20602)** | SPI socket (`/tmp/thejas_spi.sock`) + virtual register model | IMU sensor publishing 7×double (56B) on UDP 9002: timestamp, ax, ay, az, gx, gy, gy | `spi_imu_server()`: MPU-6000 register emulation (WHO_AM_I=0x68, burst read 0x3B–0x48). Converts SI units to register LSBs. | Synthetic fallback when Gazebo data unavailable (sin/cos wave). Converts m/s² → 16384 LSB/g, rad/s → 16.4 LSB/(deg/s) |
+| **Barometer (MS5611)** | I2C socket (`/tmp/thejas_i2c.sock`) + virtual EEPROM at 0x50 | Baro sensor (pressure/temperature) | `i2c_sensor_server()`: Handles MS5611 commands (0x1E reset, 0x40–0x46 D1/D2 conversion, 0xA0–0xAE PROM read). Returns 24-bit pressure/temp. | Pressure in Pa, temperature in °C. Requires multi-byte read (3 bytes for ADC result) |
+| **Compass (HMC5883L)** | I2C socket (`/tmp/thejas_i2c.sock`) + virtual EEPROM at 0x50 | Compass sensor (3-axis mag) | `i2c_sensor_server()`: Handles HMC5883L registers (0x03–0x08 data, 0x0A status, 0x0B config A, 0x0C config B, 0x0D mode). Returns 16-bit X/Z/Y. | Gain/range configurable via Config B. Continuous measurement mode supported. |
+| **GNSS (NMEA)** | UART socket (`/tmp/thejas_uart.sock`) | GPS NMEA output | `uart_server()`: Forwards NMEA sentences from Gazebo GPS plugin to emulator UART RX. | NMEA parser in firmware (`nmea_parser_feed/parse`) processes $GPGGA, $GPRMC, etc. |
+| **RC Input (SBUS/CRSF/PPM)** | UART socket (`/tmp/thejas_uart.sock`) | N/A | N/A (RC parser in firmware) | Firmware implements SBUS/CRSF/PPM parser (`rc_parser_feed/parse`) fed by UART drain task. |
+| **Battery/Current/RSSI (ADC)** | ADC socket (`/tmp/thejas_adc.sock`) | Custom analog sensor emulation | `sitl_bridge.py`: Returns voltage/current/RSSI on request `[0x01, channel]` → 2-byte LE u16. | Ch0: battery voltage, Ch1: current, Ch2: RSSI. Clamped to 12-bit (4095). |
+
+**Key Gaps for Emulator Patches:**
+1. **3 UART instances needed** — GNSS and RC tasks currently share one UART socket; cannot be validated independently.
+2. **I2C multi-byte reads** — MS5611 needs 3-byte ADC read; HMC5883L needs 6-byte burst read. Current IPC only supports single-byte reads.
+3. **ADC clamp** — Synthetic values must be clamped to 4095 (12-bit).
 
 ---
 

@@ -289,7 +289,23 @@ make clean       # Remove build/
 
 #### M1 Design Decisions (Pre-Implementation)
 
-**Task Splitting (from single 1kHz "state estimate"):**
+**Emulator Patches Required First (Prerequisites for Task Validation):**
+*These must land in the emulator before the corresponding firmware tasks can be fully validated.*
+
+| Priority | Emulator Patch | Why Required | Firmware Impact |
+|----------|----------------|--------------|-----------------|
+| 1 | **3 UART instances** with separate Unix sockets (`/tmp/thejas_uart0.sock`, `uart1.sock`, `uart2.sock`) | GNSS and RC tasks currently share one UART socket; cannot validate independent drain/parsing | Enables independent `task_gnss_uart` (UART1) and `task_rc_uart` (UART2) validation |
+| 2 | **I2C IPC protocol: command-only writes + multi-byte burst reads** | MS5611 needs 3-byte ADC read; HMC5883L needs 6-byte burst read. Current IPC only supports single-byte reads. | Enables `task_baro` (MS5611 convert+read-3) and `task_mag` (HMC5883L read-6) |
+| 3 | **Writable file-backed QSPI flash** (persist across runs) | M3 parameter persistence test requires flash write/erase | Enables M3 `PARAM_VALUE` persistence, logger flash writes |
+| 4 | **`--strict-mem` flag**: access fault on unmapped loads/stores; PC=0 = fault (not clean exit) | Catches null-pointer derefs and OOB accesses in firmware | Hardens firmware against memory errors |
+| 5 | **Test-finished register** that sets emulator exit code | Enables automated CI testing without manual cycle limits | Clean `make emu-test` integration |
+| 6 | **Baud-accurate UART TX model** (simulate bit timing) | Validates firmware UART timing assumptions | Improves UART driver fidelity |
+| 7 | **ADC clamp to 4095** (12-bit) | Synthetic ADC values currently unbounded | Prevents firmware ADC overflow |
+| 8 | **`mcycleh` at 0xB80** (keep 0xC80 as user shadow) | Matches RISC-V privileged spec | Corrects CSR mapping |
+
+*Current `hal_emu/i2c.c` was written against the OLD protocol (single-byte reads only). Must be updated after patch 2 lands.*
+
+**Firmware Task Splitting (from single 1kHz "state estimate"):**
 | Task | Rate | Period | Purpose |
 |------|------|--------|---------|
 | IMU (SPI) | 1000 Hz | 1000 µs | Burst read → raw IMU data |
@@ -304,7 +320,7 @@ make clean       # Remove build/
 **check-ram Enhancement:**
 - Count `.data` + `.bss` (+ `.text` if linked into RAM for copy-to-RAM)
 - Stack painting at init (fill stack with 0xDEADBEEF pattern)
-- Report high-water mark (lowest stack address touched) at runtime
+- Report high-water mark (lowest stack address touched) at runtime — **IMPLEMENTED** via `stack_high_water_mark()` in `src/main.c`, reported in `vehicle_state_t.stack_hwm_bytes`
 - Record XIP vs copy-to-RAM as open item in AUDIT.md
 
 **Time Base:**
@@ -313,16 +329,6 @@ make clean       # Remove build/
 - Real hardware: set per datasheet (typically 32.768 kHz or 1 MHz)
 - Use `mtimecmp` for scheduler tick (not Timer peripheral)
 - Profiler output labeled **"instructions retired"** (emulator ≈ 1:1; real HW has pipeline)
-
-**Emulator Changes (Propose as Small Separate Patches - Do Not Merge Until Reviewed):**
-1. **3 UART instances**, each with own Unix socket (`uart0`, `uart1`, `uart2`)
-2. **Writable file-backed QSPI flash** (persist across runs)
-3. **`--strict-mem` flag**: access fault on unmapped loads/stores; PC=0 = fault (not clean exit)
-4. **Test-finished register** that sets emulator exit code
-5. **Baud-accurate UART TX model** (simulate bit timing)
-6. **ADC clamp to 4095** (12-bit)
-7. **`mcycleh` at 0xB80** (keep 0xC80 as user shadow)
-8. Replace "do not modify emulator core" with "propose each as a small separate patch"
 
 **Flash/Logger:**
 - Erase and program as **chunked yielding state machines** (cooperative, no blocking)
@@ -335,7 +341,7 @@ make clean       # Remove build/
 
 **state.h Updates:**
 - Document **single writer per field** (owner module)
-- Add: `landed` flag, `current_mode`, `failsafe_status`, `timestamp`
+- Add: `landed` flag, `current_mode`, `failsafe_status`, `timestamp`, `stack_hwm_bytes`
 - Add `STATE_IFACE_VERSION` (compile-time version for integration checks)
 - **Do not freeze until human signs off**
 

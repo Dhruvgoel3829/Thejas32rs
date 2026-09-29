@@ -85,6 +85,7 @@ typedef struct {
     ctrl_request_t current_mode; /* writer: mode manager */
     uint8_t failsafe_status;  /* writer: failsafe manager (bitmask) */
     time_us_t timestamp;      /* writer: scheduler (per cycle) */
+    uint32_t stack_hwm_bytes; /* writer: logger task (high-water mark) */
 
     home_t home;              /* set on arm (writer: mode manager) */
 } vehicle_state_t;

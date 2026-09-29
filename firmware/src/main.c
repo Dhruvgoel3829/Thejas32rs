@@ -30,6 +30,7 @@ static void task_mode_failsafe(void *arg);
 static void task_mavlink_rx(void *arg);
 static void task_mavlink_tx(void *arg);
 static void task_logger(void *arg);
+static uint32_t stack_high_water_mark(void);
 
 /* Static task table */
 static sched_task_t g_tasks[SCHED_MAX_TASKS];
@@ -185,6 +186,27 @@ static void task_mavlink_tx(void *arg) {
 static void task_logger(void *arg) {
     (void)arg;
     /* TODO: Flush log buffer to flash */
+    /* Report stack high-water mark */
+    uint32_t hwm = stack_high_water_mark();
+    g_vehicle_state.stack_hwm_bytes = hwm;
+}
+
+/* Stack high-water mark scan */
+static uint32_t stack_high_water_mark(void) {
+    extern uint32_t __stack_top;
+    extern uint32_t __bss_end;
+    uint32_t *stack_ptr = (uint32_t *)&__bss_end;
+    uint32_t *stack_top = (uint32_t *)&__stack_top;
+    uint32_t min_free = (uint32_t)stack_top - (uint32_t)stack_ptr;
+
+    while (stack_ptr < stack_top) {
+        if (*stack_ptr != 0xDEADBEEF) {
+            uint32_t used = (uint32_t)stack_top - (uint32_t)stack_ptr;
+            if (used < min_free) min_free = used;
+        }
+        stack_ptr++;
+    }
+    return min_free;
 }
 
 static void sched_add_task(sched_task_fn fn, uint32_t period_us, const char *name) {
