@@ -21,9 +21,15 @@ void sched_run(time_us_t now_us, sched_task_t *tasks, uint8_t count) {
             if (cycles > t->max_cycles) {
                 t->max_cycles = cycles;
             }
+            if (cycles < t->min_cycles) {
+                t->min_cycles = cycles;
+            }
+            t->total_cycles += cycles;
+            t->run_count++;
 
-            /* Check for overrun */
-            if (cycles > (t->period_us * 100)) {  /* rough: assume 100 cycles/us at 100MHz */
+            /* Check for overrun: instructions retired > period_us * (MTIME_HZ / 1_000_000) */
+            uint32_t max_instr_per_period = t->period_us * (MTIME_HZ / 1000000);
+            if (cycles > max_instr_per_period) {
                 t->overruns++;
             }
 

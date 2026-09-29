@@ -122,6 +122,7 @@ static void test_param_bounds(void) {
 
 /* Main test runner */
 int main(void) {
+    hal_time_init();
     printf("=== VEGA Pilot Firmware Host Tests ===\n");
 
     test_sched_basic();

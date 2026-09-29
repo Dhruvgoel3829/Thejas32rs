@@ -14,9 +14,17 @@
 #define STACK_RESERVE_BYTES     (32 * 1024)   /* 32 KB stack reserve */
 #endif
 
-/* Scheduler task periods (microseconds) - final values from M1 profiling */
-#define SCHED_CTRL_HZ           1000          /* Control loop: 1000 Hz (1000 us) */
-#define SCHED_STATE_HZ          1000          /* State estimation: 1000 Hz */
+/* Time base */
+#define MTIME_HZ                100000000     /* CLINT mtime frequency (emulator = 100 MHz nominal) */
+
+/* Scheduler task rates (Hz) - final values from M1 profiling */
+#define SCHED_CTRL_HZ           1000          /* Control loop: 1000 Hz */
+#define SCHED_IMU_HZ            1000          /* IMU SPI read: 1000 Hz */
+#define SCHED_BARO_HZ           100           /* Baro I2C state machine: 100 Hz */
+#define SCHED_MAG_HZ            75            /* Mag I2C read: 75 Hz */
+#define SCHED_GNSS_UART_HZ      100           /* GNSS UART drain: 100 Hz */
+#define SCHED_RC_UART_HZ        100           /* RC UART drain: 100 Hz */
+#define SCHED_ADC_HZ            100           /* ADC read: 100 Hz */
 #define SCHED_MODE_HZ           50            /* Mode/failsafe manager: 50 Hz */
 #define SCHED_MAVLINK_RX_HZ     100           /* MAVLink RX parse: 100 Hz */
 #define SCHED_MAVLINK_TX_HZ     10            /* MAVLink telemetry TX: 10 Hz base */
@@ -24,7 +32,12 @@
 
 /* Derived periods in microseconds */
 #define SCHED_CTRL_PERIOD_US    (1000000 / SCHED_CTRL_HZ)
-#define SCHED_STATE_PERIOD_US   (1000000 / SCHED_STATE_HZ)
+#define SCHED_IMU_PERIOD_US     (1000000 / SCHED_IMU_HZ)
+#define SCHED_BARO_PERIOD_US    (1000000 / SCHED_BARO_HZ)
+#define SCHED_MAG_PERIOD_US     (1000000 / SCHED_MAG_HZ)
+#define SCHED_GNSS_UART_PERIOD_US (1000000 / SCHED_GNSS_UART_HZ)
+#define SCHED_RC_UART_PERIOD_US (1000000 / SCHED_RC_UART_HZ)
+#define SCHED_ADC_PERIOD_US     (1000000 / SCHED_ADC_HZ)
 #define SCHED_MODE_PERIOD_US    (1000000 / SCHED_MODE_HZ)
 #define SCHED_MAVLINK_RX_PERIOD_US (1000000 / SCHED_MAVLINK_RX_HZ)
 #define SCHED_MAVLINK_TX_PERIOD_US (1000000 / SCHED_MAVLINK_TX_HZ)

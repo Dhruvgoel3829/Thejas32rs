@@ -24,7 +24,7 @@ COMMON_CFLAGS := -std=c11 -Wall -Wextra -Werror \
                  -Iinclude \
                  -DSRAM_BUDGET_BYTES=262144
 
-RV_CFLAGS  += $(COMMON_CFLAGS) -nostdlib -fno-builtin
+RV_CFLAGS  += $(COMMON_CFLAGS) -ffreestanding -nostdlib -fno-builtin
 HOST_CFLAGS += $(COMMON_CFLAGS)
 
 # Directories
@@ -52,6 +52,7 @@ RV_SRCS := $(SRC_DIR)/main.c \
            $(SRC_DIR)/hal_emu/pwm.c \
            $(SRC_DIR)/hal_emu/gnss.c \
            $(SRC_DIR)/hal_emu/rc.c \
+           $(SRC_DIR)/libc/string.c \
            $(SRC_DIR)/state/state.c \
            $(SRC_DIR)/ctrl_stub/ctrl_stub.c
 
@@ -112,7 +113,34 @@ emu-test: rv32
 
 # Check RAM usage from map file
 check-ram: rv32
-	@awk '/^\.bss/,/^\.[a-z]/ { if ($$1 ~ /^\__bss_end$$/) bss_end=strtonum("0x"$$2); if ($$1 ~ /^\__bss_start$$/) bss_start=strtonum("0x"$$2); } END { if (bss_end && bss_start) { used=bss_end-bss_start; print "BSS: " used " bytes (" used/1024 " KB)"; if (used > 229376) { print "ERROR: Exceeds 256KB - 32KB stack reserve"; exit 1; } } }' $(RV_BUILD_DIR)/firmware.map
+	@echo "=== RAM Usage Check ==="
+	@awk '$$2 == "__text_start" {text_start=strtonum($$1)} \
+	    $$2 == "__text_end" {text_end=strtonum($$1)} \
+	    $$2 == "__data_start" {data_start=strtonum($$1)} \
+	    $$2 == "__data_end" {data_end=strtonum($$1)} \
+	    $$2 == "__bss_start" {bss_start=strtonum($$1)} \
+	    $$2 == "__bss_end" {bss_end=strtonum($$1)} \
+	    END { \
+	        text_used = (text_end > text_start) ? text_end - text_start : 0; \
+	        data_used = (data_end > data_start) ? data_end - data_start : 0; \
+	        bss_used = (bss_end > bss_start) ? bss_end - bss_start : 0; \
+	        total_ram = data_used + bss_used; \
+	        copy_to_ram = total_ram + text_used; \
+	        budget = 262144; \
+	        stack_reserve = 32768; \
+	        available = budget - stack_reserve; \
+	        printf "XIP mode (data+bss): %d bytes (%d KB)\n", total_ram, total_ram/1024; \
+	        printf "Copy-to-RAM mode (text+data+bss): %d bytes (%d KB)\n", copy_to_ram, copy_to_ram/1024; \
+	        printf "Available for data+bss (256KB - 32KB stack): %d bytes (%d KB)\n", available, available/1024; \
+	        if (total_ram > available) { \
+	            printf "ERROR: XIP data+bss exceeds %d bytes\n", available; exit 1; \
+	        } \
+	        if (copy_to_ram > budget) { \
+	            printf "ERROR: Copy-to-RAM exceeds %d bytes\n", budget; exit 1; \
+	        } \
+	    }' $(RV_BUILD_DIR)/firmware.map
+	@echo "=== Stack High-Water Mark (run firmware first) ==="
+	@echo "TODO: Implement runtime stack high-water reporting"
 
 # Clean
 clean:

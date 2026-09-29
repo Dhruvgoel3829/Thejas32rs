@@ -9,8 +9,10 @@ MEMORY
 SECTIONS
 {
     .text : {
+        __text_start = .;
         KEEP(*(.text.entry))
         *(.text .text.*)
+        __text_end = .;
     } > RAM
 
     .rodata : {
@@ -20,9 +22,11 @@ SECTIONS
     } > RAM
 
     .data : {
+        __data_start = .;
         . = ALIGN(4);
         *(.data .data.*)
         *(.sdata .sdata.*)
+        __data_end = .;
     } > RAM
 
     .bss : {

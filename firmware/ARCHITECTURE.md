@@ -235,6 +235,12 @@ typedef struct {
 - Fixed-size buffers with compile-time bounds in `config.h`
 - Linker map checked: build fails if RAM > `SRAM_BUDGET_BYTES`
 
+**check-ram Target:**
+- Counts `.data` + `.bss` (+ `.text` if copy-to-RAM)
+- Stack painting: fills stack with 0xDEADBEEF at init
+- Reports high-water mark (minimum free stack) at runtime
+- XIP vs copy-to-RAM recorded as open item in AUDIT.md
+
 ---
 
 ## 8. Build System
@@ -243,12 +249,23 @@ typedef struct {
 ```make
 # RV32 target
 RV_CC := riscv-none-elf-gcc -march=rv32imac_zicsr -mabi=ilp32
-RV_CFLAGS := -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Os -g -nostdlib -fno-builtin
+RV_CFLAGS := -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Os -g \
+             -ffreestanding -nostdlib -fno-builtin
 
 # Host tests
 HOST_CC := gcc -m64
 HOST_CFLAGS := -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Os -g
 ```
+
+### Mem/Str Implementations
+- Provide `memcpy`, `memset`, `memcmp`, `strlen`, `strcpy`, `strncpy` in `src/libc/`
+- Or use newlib-nano subset (`-specs=nano.specs` if available)
+- No full libc
+
+### MAVLink Vendoring
+- Vendor `c_library_v2` in `third_party/mavlink/`
+- Include with `-isystem third_party/mavlink/include` (not `-I`) to suppress warnings
+- Use only `minimal` + `common` dialects
 
 ### Targets
 ```bash
@@ -256,20 +273,75 @@ make rv32        # Build firmware/build/rv32/firmware.elf
 make host-test   # Build firmware/build/host/test_runner
 make test        # Run host unit tests (5 passing)
 make emu-test    # Run firmware in emulator (100K cycles)
-make check-ram   # Verify BSS < 229376 bytes (256KB - 32KB stack)
+make check-ram   # Verify RAM usage + stack high-water
 make clean       # Remove build/
 ```
 
-### Soft-Float
-- No FPU on target → all `float` ops via libgcc (`__mulsf3`, `__addsf3`, etc.)
-- Link with `libgcc.a` explicitly in Makefile
-- Never use `double`
+### Linker Flags
+- `--gc-sections` confirmed in `LDFLAGS`
+- Explicit `libgcc.a` for soft-float
 
 ---
 
 ## 9. How to Extend (Next Milestones)
 
 ### Milestone 1: Scheduler, Time, Profiling
+
+#### M1 Design Decisions (Pre-Implementation)
+
+**Task Splitting (from single 1kHz "state estimate"):**
+| Task | Rate | Period | Purpose |
+|------|------|--------|---------|
+| IMU (SPI) | 1000 Hz | 1000 µs | Burst read → raw IMU data |
+| Baro (I2C) | 100 Hz | 10000 µs | Non-blocking convert/wait/read state machine |
+| Mag (I2C) | 75 Hz | 13333 µs | Non-blocking read |
+| GNSS UART drain | 100 Hz | 10000 µs | Non-blocking byte drain → NMEA parser |
+| RC UART drain | 100 Hz | 10000 µs | Non-blocking byte drain → SBUS/CRSF parser |
+| ADC | 100 Hz | 10000 µs | Non-blocking convert/read |
+
+**Rule:** No task may block on I/O. All HAL calls are non-blocking or state-machine based.
+
+**check-ram Enhancement:**
+- Count `.data` + `.bss` (+ `.text` if linked into RAM for copy-to-RAM)
+- Stack painting at init (fill stack with 0xDEADBEEF pattern)
+- Report high-water mark (lowest stack address touched) at runtime
+- Record XIP vs copy-to-RAM as open item in AUDIT.md
+
+**Time Base:**
+- `hal_time_us()` from CLINT `mtime` via `MTIME_HZ` in `config.h`
+- Emulator: `MTIME_HZ = 100000000` (100 MHz nominal)
+- Real hardware: set per datasheet (typically 32.768 kHz or 1 MHz)
+- Use `mtimecmp` for scheduler tick (not Timer peripheral)
+- Profiler output labeled **"instructions retired"** (emulator ≈ 1:1; real HW has pipeline)
+
+**Emulator Changes (Propose as Small Separate Patches - Do Not Merge Until Reviewed):**
+1. **3 UART instances**, each with own Unix socket (`uart0`, `uart1`, `uart2`)
+2. **Writable file-backed QSPI flash** (persist across runs)
+3. **`--strict-mem` flag**: access fault on unmapped loads/stores; PC=0 = fault (not clean exit)
+4. **Test-finished register** that sets emulator exit code
+5. **Baud-accurate UART TX model** (simulate bit timing)
+6. **ADC clamp to 4095** (12-bit)
+7. **`mcycleh` at 0xB80** (keep 0xC80 as user shadow)
+8. Replace "do not modify emulator core" with "propose each as a small separate patch"
+
+**Flash/Logger:**
+- Erase and program as **chunked yielding state machines** (cooperative, no blocking)
+- Each flash op yields to scheduler; logger flush is a state machine
+
+**Toolchain:**
+- `-ffreestanding` plus `mem*`/`str*` implementations (or newlib-nano subset)
+- Vendor MAVLink with `-isystem` (not `-I`) to suppress warnings
+- Confirm `--gc-sections` in `LDFLAGS` (already done)
+
+**state.h Updates:**
+- Document **single writer per field** (owner module)
+- Add: `landed` flag, `current_mode`, `failsafe_status`, `timestamp`
+- Add `STATE_IFACE_VERSION` (compile-time version for integration checks)
+- **Do not freeze until human signs off**
+
+---
+
+### Milestone 1: Scheduler, Time, Profiling (Implementation)
 1. **UART ring buffers** in `hal_emu/uart.c` - non-blocking TX with backpressure
 2. **Cycle profiling** in `sched.c` - min/avg/max per task, overrun detection
 3. **Safe 64-bit time** - already in `hal_emu/time.c` (hi/lo/hi loop)
@@ -399,11 +471,11 @@ All host tests passing, all emulator scenarios scripted and passing, Mission Pla
 
 | File | Purpose |
 |------|---------|
-| `include/config.h` | **All tunables** - change rates, limits, defaults here |
-| `include/state.h` | **Core interfaces** - human's controller plugs into `ctrl_interface_t` |
+| `include/config.h` | **All tunables** - change rates, limits, defaults here (includes `MTIME_HZ`) |
+| `include/state.h` | **Core interfaces** - single writer per field, `STATE_IFACE_VERSION`, not frozen |
 | `include/hal_vega/regs.h` | **Register addresses** - single source of truth |
 | `src/main.c` | Task registration + scheduler loop |
-| `src/sched.c` | Scheduler implementation |
+| `src/sched.c` | Scheduler implementation + profiling |
 | `src/ctrl_stub/ctrl_stub.c` | Placeholder controller (replace this) |
 | `src/hal_emu/*.c` | Emulator HAL implementations |
 | `docs/AUDIT.md` | Full emulator analysis & differences |
@@ -411,4 +483,33 @@ All host tests passing, all emulator scenarios scripted and passing, Mission Pla
 
 ---
 
-*Generated 2026-09-28 for Milestone 0 completion*
+## 15. state.h Ownership & Versioning
+
+### Single Writer Per Field
+| Field | Writer | Readers |
+|-------|--------|---------|
+| `roll, pitch, yaw` | Attitude estimator (human) | Controller, MAVLink, logger |
+| `rate_x, rate_y, rate_z` | IMU task | Attitude estimator, controller |
+| `alt_m, climb_mps` | Altitude estimator (human) | Controller, MAVLink, logger |
+| `lat_e7, lon_e7, vn, ve` | Position estimator (human) | Controller, MAVLink, logger |
+| `att_valid, alt_valid, pos_valid` | Respective estimators | Mode manager, failsafe |
+| `batt_mv, batt_ma, batt_pct` | ADC task | Failsafe, MAVLink |
+| `gnss_fix, gnss_sats, gnss_last_ok_ms` | GNSS UART task | Mode manager, failsafe |
+| `rc_link_ok, rc_last_ms` | RC UART task | Mode manager, failsafe |
+| `gcs_last_heartbeat_ms` | MAVLink RX task | Failsafe |
+| `armed` | Mode manager (arming logic) | All |
+| `landed` | Land detector (human) | Mode manager, failsafe |
+| `current_mode` | Mode manager | MAVLink, controller |
+| `failsafe_status` | Failsafe manager | Mode manager, MAVLink |
+| `home` | Mode manager (on arm) | Mission, RTL |
+| `timestamp` | Scheduler (per cycle) | All (for latency measurement) |
+
+### `STATE_IFACE_VERSION`
+```c
+#define STATE_IFACE_VERSION 0x00010000  // Major.Minor.Patch
+```
+Checked at link time via `static_assert` in modules that include `state.h`. **Do not freeze until human signs off.**
+
+---
+
+*Generated 2026-09-28 for Milestone 0 completion, updated with M1 design decisions*

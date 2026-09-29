@@ -20,7 +20,12 @@
 
 /* Task function prototypes */
 static void task_control(void *arg);
-static void task_state_estimate(void *arg);
+static void task_imu(void *arg);
+static void task_baro(void *arg);
+static void task_mag(void *arg);
+static void task_gnss_uart(void *arg);
+static void task_rc_uart(void *arg);
+static void task_adc(void *arg);
 static void task_mode_failsafe(void *arg);
 static void task_mavlink_rx(void *arg);
 static void task_mavlink_tx(void *arg);
@@ -29,6 +34,20 @@ static void task_logger(void *arg);
 /* Static task table */
 static sched_task_t g_tasks[SCHED_MAX_TASKS];
 static uint8_t g_task_count = 0;
+
+/* Baro state machine state */
+typedef enum {
+    BARO_IDLE,
+    BARO_CONVERT_D1,
+    BARO_WAIT_D1,
+    BARO_READ_D1,
+    BARO_CONVERT_D2,
+    BARO_WAIT_D2,
+    BARO_READ_D2
+} baro_state_t;
+
+static baro_state_t g_baro_state = BARO_IDLE;
+static time_us_t g_baro_start_us = 0;
 
 static void task_control(void *arg) {
     (void)arg;
@@ -41,22 +60,116 @@ static void task_control(void *arg) {
     }
 }
 
-static void task_state_estimate(void *arg) {
+static void task_imu(void *arg) {
     (void)arg;
-    /* TODO: Call human's estimator stubs here */
-    /* For now, just read raw sensors and copy to state */
     imu_raw_t imu;
     if (hal_imu_read(&imu)) {
-        g_vehicle_state.rate_x = imu.gx * 0.001f;  /* placeholder scaling */
-        g_vehicle_state.rate_y = imu.gy * 0.001f;
-        g_vehicle_state.rate_z = imu.gz * 0.001f;
+        /* Raw gyro LSB to rad/s: 16.4 LSB/(deg/s) -> 1/16.4 * pi/180 = 0.001064 rad/s per LSB */
+        g_vehicle_state.rate_x = imu.gx * 0.001064f;
+        g_vehicle_state.rate_y = imu.gy * 0.001064f;
+        g_vehicle_state.rate_z = imu.gz * 0.001064f;
         g_vehicle_state.att_valid = true;
+    }
+}
+
+static void task_baro(void *arg) {
+    (void)arg;
+    time_us_t now = hal_time_us();
+    baro_raw_t baro;
+
+    switch (g_baro_state) {
+        case BARO_IDLE:
+            if (hal_baro_read(&baro)) {
+                /* Start D1 (pressure) conversion */
+                g_baro_state = BARO_CONVERT_D1;
+            }
+            break;
+        case BARO_CONVERT_D1:
+            /* Non-blocking: conversion takes ~9ms at OSR=4096 */
+            g_baro_state = BARO_WAIT_D1;
+            g_baro_start_us = now;
+            break;
+        case BARO_WAIT_D1:
+            if (now - g_baro_start_us >= 10000) {  /* 10ms wait */
+                g_baro_state = BARO_READ_D1;
+            }
+            break;
+        case BARO_READ_D1:
+            if (hal_baro_read(&baro)) {
+                g_vehicle_state.alt_m = baro.pressure_pa * 0.0001f;  /* placeholder */
+                g_vehicle_state.alt_valid = true;
+                /* Start D2 (temperature) conversion */
+                g_baro_state = BARO_CONVERT_D2;
+            }
+            break;
+        case BARO_CONVERT_D2:
+            g_baro_state = BARO_WAIT_D2;
+            g_baro_start_us = now;
+            break;
+        case BARO_WAIT_D2:
+            if (now - g_baro_start_us >= 10000) {
+                g_baro_state = BARO_READ_D2;
+            }
+            break;
+        case BARO_READ_D2:
+            if (hal_baro_read(&baro)) {
+                /* Temperature compensation would go here */
+                g_baro_state = BARO_IDLE;
+            }
+            break;
+    }
+}
+
+static void task_mag(void *arg) {
+    (void)arg;
+    mag_raw_t mag;
+    if (hal_mag_read(&mag)) {
+        /* TODO: Compensate and update heading */
+        (void)mag;
+    }
+}
+
+static void task_gnss_uart(void *arg) {
+    (void)arg;
+    /* Non-blocking UART drain -> NMEA parser */
+    uint8_t buf[64];
+    uint16_t len;
+    if (hal_uart_read(UART_ID_GNSS, buf, sizeof(buf), &len)) {
+        /* TODO: Feed to NMEA parser, update gnss_fix, lat/lon, sats */
+        (void)buf;
+        (void)len;
+    }
+}
+
+static void task_rc_uart(void *arg) {
+    (void)arg;
+    /* Non-blocking UART drain -> SBUS/CRSF parser */
+    uint8_t buf[64];
+    uint16_t len;
+    if (hal_uart_read(UART_ID_RC, buf, sizeof(buf), &len)) {
+        /* TODO: Feed to RC parser, update rc_link_ok, channels */
+        (void)buf;
+        (void)len;
+    }
+}
+
+static void task_adc(void *arg) {
+    (void)arg;
+    adc_raw_t adc;
+    if (hal_adc_read(&adc)) {
+        g_vehicle_state.batt_mv = adc.batt_mv;
+        g_vehicle_state.batt_ma = adc.batt_ma;
+        /* Simple battery percentage: 3.0V=0%, 4.2V=100% per cell * 4S */
+        if (adc.batt_mv >= 16800) g_vehicle_state.batt_pct = 100;
+        else if (adc.batt_mv <= 12000) g_vehicle_state.batt_pct = 0;
+        else g_vehicle_state.batt_pct = (adc.batt_mv - 12000) * 100 / 4800;
     }
 }
 
 static void task_mode_failsafe(void *arg) {
     (void)arg;
     /* TODO: Call mode manager and failsafe manager */
+    g_vehicle_state.timestamp = hal_time_us();
 }
 
 static void task_mavlink_rx(void *arg) {
@@ -80,6 +193,9 @@ static void sched_add_task(sched_task_fn fn, uint32_t period_us, const char *nam
     g_tasks[g_task_count].period_us = period_us;
     g_tasks[g_task_count].last_run = 0;
     g_tasks[g_task_count].max_cycles = 0;
+    g_tasks[g_task_count].min_cycles = UINT32_MAX;
+    g_tasks[g_task_count].total_cycles = 0;
+    g_tasks[g_task_count].run_count = 0;
     g_tasks[g_task_count].overruns = 0;
     g_tasks[g_task_count].name = name;
     g_task_count++;
@@ -89,6 +205,8 @@ int main(void) {
     /* Initialize HAL */
     hal_time_init();
     hal_uart_init(UART_ID_TELEM, 57600);
+    hal_uart_init(UART_ID_GNSS, 9600);
+    hal_uart_init(UART_ID_RC, 100000);
     hal_gpio_init();
     hal_pwm_init();
     hal_imu_init();
@@ -103,9 +221,23 @@ int main(void) {
         g_ctrl_interface->init();
     }
 
+    /* Stack painting for high-water mark */
+    extern uint32_t __stack_top;
+    extern uint32_t __bss_end;
+    uint32_t *stack_ptr = (uint32_t *)&__bss_end;
+    uint32_t *stack_top = (uint32_t *)&__stack_top;
+    while (stack_ptr < stack_top) {
+        *stack_ptr++ = 0xDEADBEEF;
+    }
+
     /* Register tasks */
     sched_add_task(task_control, SCHED_CTRL_PERIOD_US, "control");
-    sched_add_task(task_state_estimate, SCHED_STATE_PERIOD_US, "state");
+    sched_add_task(task_imu, SCHED_IMU_PERIOD_US, "imu");
+    sched_add_task(task_baro, SCHED_BARO_PERIOD_US, "baro");
+    sched_add_task(task_mag, SCHED_MAG_PERIOD_US, "mag");
+    sched_add_task(task_gnss_uart, SCHED_GNSS_UART_PERIOD_US, "gnss_uart");
+    sched_add_task(task_rc_uart, SCHED_RC_UART_PERIOD_US, "rc_uart");
+    sched_add_task(task_adc, SCHED_ADC_PERIOD_US, "adc");
     sched_add_task(task_mode_failsafe, SCHED_MODE_PERIOD_US, "mode_fs");
     sched_add_task(task_mavlink_rx, SCHED_MAVLINK_RX_PERIOD_US, "mav_rx");
     sched_add_task(task_mavlink_tx, SCHED_MAVLINK_TX_PERIOD_US, "mav_tx");

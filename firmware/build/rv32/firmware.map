@@ -1,0 +1,724 @@
+Archive member included to satisfy reference by file (symbol)
+
+/opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_udivdi3.o)
+                              build/rv32/src/hal_emu/time.o (__udivdi3)
+/opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(mulsf3.o)
+                              build/rv32/src/main.o (__mulsf3)
+/opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(fixunssfsi.o)
+                              build/rv32/src/ctrl_stub/ctrl_stub.o (__fixunssfsi)
+/opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(floatsisf.o)
+                              build/rv32/src/main.o (__floatsisf)
+/opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(floatunsisf.o)
+                              build/rv32/src/hal_emu/i2c.o (__floatunsisf)
+/opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_clz.o)
+                              /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_udivdi3.o) (__clz_tab)
+/opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_clzsi2.o)
+                              /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(mulsf3.o) (__clzsi2)
+
+Discarded input sections
+
+ .text          0x00000000        0x0 /tmp/ccNHUJJb.o
+ .data          0x00000000        0x0 /tmp/ccNHUJJb.o
+ .bss           0x00000000        0x0 /tmp/ccNHUJJb.o
+ .text          0x00000000        0x0 build/rv32/src/main.o
+ .data          0x00000000        0x0 build/rv32/src/main.o
+ .bss           0x00000000        0x0 build/rv32/src/main.o
+ .text          0x00000000        0x0 build/rv32/src/sched.o
+ .data          0x00000000        0x0 build/rv32/src/sched.o
+ .bss           0x00000000        0x0 build/rv32/src/sched.o
+ .text.sched_report_cycles
+                0x00000000        0x2 build/rv32/src/sched.o
+ .text          0x00000000        0x0 build/rv32/src/hal_emu/time.o
+ .data          0x00000000        0x0 build/rv32/src/hal_emu/time.o
+ .bss           0x00000000        0x0 build/rv32/src/hal_emu/time.o
+ .text.hal_time_ms
+                0x00000000       0x20 build/rv32/src/hal_emu/time.o
+ .text          0x00000000        0x0 build/rv32/src/hal_emu/uart.o
+ .data          0x00000000        0x0 build/rv32/src/hal_emu/uart.o
+ .bss           0x00000000        0x0 build/rv32/src/hal_emu/uart.o
+ .text.hal_uart_write_nb
+                0x00000000       0x32 build/rv32/src/hal_emu/uart.o
+ .sbss.uart_tx_tail
+                0x00000000        0x6 build/rv32/src/hal_emu/uart.o
+ .sbss.uart_tx_head
+                0x00000000        0x6 build/rv32/src/hal_emu/uart.o
+ .text          0x00000000        0x0 build/rv32/src/hal_emu/gpio.o
+ .data          0x00000000        0x0 build/rv32/src/hal_emu/gpio.o
+ .bss           0x00000000        0x0 build/rv32/src/hal_emu/gpio.o
+ .text.hal_gpio_write
+                0x00000000       0x14 build/rv32/src/hal_emu/gpio.o
+ .text.hal_gpio_read
+                0x00000000        0xe build/rv32/src/hal_emu/gpio.o
+ .text.hal_gpio_toggle
+                0x00000000       0x12 build/rv32/src/hal_emu/gpio.o
+ .text          0x00000000        0x0 build/rv32/src/hal_emu/spi.o
+ .data          0x00000000        0x0 build/rv32/src/hal_emu/spi.o
+ .bss           0x00000000        0x0 build/rv32/src/hal_emu/spi.o
+ .text          0x00000000        0x0 build/rv32/src/hal_emu/i2c.o
+ .data          0x00000000        0x0 build/rv32/src/hal_emu/i2c.o
+ .bss           0x00000000        0x0 build/rv32/src/hal_emu/i2c.o
+ .text          0x00000000        0x0 build/rv32/src/hal_emu/adc.o
+ .data          0x00000000        0x0 build/rv32/src/hal_emu/adc.o
+ .bss           0x00000000        0x0 build/rv32/src/hal_emu/adc.o
+ .text          0x00000000        0x0 build/rv32/src/hal_emu/pwm.o
+ .data          0x00000000        0x0 build/rv32/src/hal_emu/pwm.o
+ .bss           0x00000000        0x0 build/rv32/src/hal_emu/pwm.o
+ .text.hal_pwm_set_us
+                0x00000000       0x34 build/rv32/src/hal_emu/pwm.o
+ .text.hal_pwm_set_freq
+                0x00000000        0xe build/rv32/src/hal_emu/pwm.o
+ .text          0x00000000        0x0 build/rv32/src/hal_emu/gnss.o
+ .data          0x00000000        0x0 build/rv32/src/hal_emu/gnss.o
+ .bss           0x00000000        0x0 build/rv32/src/hal_emu/gnss.o
+ .text.hal_gnss_read
+                0x00000000        0x4 build/rv32/src/hal_emu/gnss.o
+ .text.nmea_parser_feed
+                0x00000000        0x2 build/rv32/src/hal_emu/gnss.o
+ .text.nmea_parser_parse
+                0x00000000        0x4 build/rv32/src/hal_emu/gnss.o
+ .text          0x00000000        0x0 build/rv32/src/hal_emu/rc.o
+ .data          0x00000000        0x0 build/rv32/src/hal_emu/rc.o
+ .bss           0x00000000        0x0 build/rv32/src/hal_emu/rc.o
+ .text.hal_rc_read
+                0x00000000        0x4 build/rv32/src/hal_emu/rc.o
+ .text.rc_parser_feed
+                0x00000000        0x2 build/rv32/src/hal_emu/rc.o
+ .text.rc_parser_parse
+                0x00000000        0x4 build/rv32/src/hal_emu/rc.o
+ .text          0x00000000        0x0 build/rv32/src/libc/string.o
+ .data          0x00000000        0x0 build/rv32/src/libc/string.o
+ .bss           0x00000000        0x0 build/rv32/src/libc/string.o
+ .text.memcpy   0x00000000       0x1c build/rv32/src/libc/string.o
+ .text.memset   0x00000000       0x12 build/rv32/src/libc/string.o
+ .text.memcmp   0x00000000       0x26 build/rv32/src/libc/string.o
+ .text.memmove  0x00000000       0x42 build/rv32/src/libc/string.o
+ .text.strlen   0x00000000       0x14 build/rv32/src/libc/string.o
+ .text.strcpy   0x00000000       0x12 build/rv32/src/libc/string.o
+ .text.strncpy  0x00000000       0x28 build/rv32/src/libc/string.o
+ .text.strcmp   0x00000000       0x1a build/rv32/src/libc/string.o
+ .text.strncmp  0x00000000       0x28 build/rv32/src/libc/string.o
+ .text.strcat   0x00000000       0x2e build/rv32/src/libc/string.o
+ .text.strchr   0x00000000       0x16 build/rv32/src/libc/string.o
+ .text.memchr   0x00000000       0x1a build/rv32/src/libc/string.o
+ .debug_info    0x00000000      0x4b1 build/rv32/src/libc/string.o
+ .debug_abbrev  0x00000000      0x103 build/rv32/src/libc/string.o
+ .debug_loclists
+                0x00000000      0x5d6 build/rv32/src/libc/string.o
+ .debug_aranges
+                0x00000000       0x78 build/rv32/src/libc/string.o
+ .debug_rnglists
+                0x00000000       0x55 build/rv32/src/libc/string.o
+ .debug_line    0x00000000      0x614 build/rv32/src/libc/string.o
+ .debug_str     0x00000000      0x1ac build/rv32/src/libc/string.o
+ .debug_line_str
+                0x00000000       0x93 build/rv32/src/libc/string.o
+ .comment       0x00000000       0x34 build/rv32/src/libc/string.o
+ .note.GNU-stack
+                0x00000000        0x0 build/rv32/src/libc/string.o
+ .debug_frame   0x00000000       0xe0 build/rv32/src/libc/string.o
+ .riscv.attributes
+                0x00000000       0x57 build/rv32/src/libc/string.o
+ .text          0x00000000        0x0 build/rv32/src/state/state.o
+ .data          0x00000000        0x0 build/rv32/src/state/state.o
+ .bss           0x00000000        0x0 build/rv32/src/state/state.o
+ .text.state_init
+                0x00000000       0x26 build/rv32/src/state/state.o
+ .text.state_update_sensors
+                0x00000000      0x114 build/rv32/src/state/state.o
+ .srodata.cst4  0x00000000        0x8 build/rv32/src/state/state.o
+ .text          0x00000000        0x0 build/rv32/src/ctrl_stub/ctrl_stub.o
+ .data          0x00000000        0x0 build/rv32/src/ctrl_stub/ctrl_stub.o
+ .bss           0x00000000        0x0 build/rv32/src/ctrl_stub/ctrl_stub.o
+ .text          0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_udivdi3.o)
+ .data          0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_udivdi3.o)
+ .bss           0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_udivdi3.o)
+ .text.__udivdi3
+                0x00000000      0x36e /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_udivdi3.o)
+ .comment       0x00000000       0x34 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_udivdi3.o)
+ .note.GNU-stack
+                0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_udivdi3.o)
+ .eh_frame      0x00000000       0x28 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_udivdi3.o)
+ .riscv.attributes
+                0x00000000       0x4e /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_udivdi3.o)
+ .text          0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(mulsf3.o)
+ .data          0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(mulsf3.o)
+ .bss           0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(mulsf3.o)
+ .text          0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(fixunssfsi.o)
+ .data          0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(fixunssfsi.o)
+ .bss           0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(fixunssfsi.o)
+ .text          0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(floatsisf.o)
+ .data          0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(floatsisf.o)
+ .bss           0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(floatsisf.o)
+ .text          0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(floatunsisf.o)
+ .data          0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(floatunsisf.o)
+ .bss           0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(floatunsisf.o)
+ .text          0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_clz.o)
+ .data          0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_clz.o)
+ .bss           0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_clz.o)
+ .text          0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_clzsi2.o)
+ .data          0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_clzsi2.o)
+ .bss           0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_clzsi2.o)
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+RAM              0x80000000         0x00040000         xrw
+*default*        0x00000000         0xffffffff
+
+Linker script and memory map
+
+LOAD /tmp/ccNHUJJb.o
+LOAD build/rv32/src/main.o
+LOAD build/rv32/src/sched.o
+LOAD build/rv32/src/hal_emu/time.o
+LOAD build/rv32/src/hal_emu/uart.o
+LOAD build/rv32/src/hal_emu/gpio.o
+LOAD build/rv32/src/hal_emu/spi.o
+LOAD build/rv32/src/hal_emu/i2c.o
+LOAD build/rv32/src/hal_emu/adc.o
+LOAD build/rv32/src/hal_emu/pwm.o
+LOAD build/rv32/src/hal_emu/gnss.o
+LOAD build/rv32/src/hal_emu/rc.o
+LOAD build/rv32/src/libc/string.o
+LOAD build/rv32/src/state/state.o
+LOAD build/rv32/src/ctrl_stub/ctrl_stub.o
+LOAD /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a
+
+.text           0x80000000      0xf12
+                0x80000000                        __text_start = .
+ *(.text.entry)
+ .text.entry    0x80000000       0x26 /tmp/ccNHUJJb.o
+                0x80000000                _start
+ *(.text .text.*)
+ .text.task_mavlink_rx
+                0x80000026        0x2 build/rv32/src/main.o
+ .text.sched_add_task
+                0x80000028       0x4a build/rv32/src/main.o
+ .text.task_mode_failsafe
+                0x80000072       0x18 build/rv32/src/main.o
+ .text.task_adc
+                0x8000008a       0x52 build/rv32/src/main.o
+ .text.task_rc_uart
+                0x800000dc       0x18 build/rv32/src/main.o
+ .text.task_gnss_uart
+                0x800000f4       0x18 build/rv32/src/main.o
+ .text.task_mag
+                0x8000010c        0xe build/rv32/src/main.o
+ .text.task_baro
+                0x8000011a       0xda build/rv32/src/main.o
+ .text.task_imu
+                0x800001f4       0x60 build/rv32/src/main.o
+ .text.task_control
+                0x80000254       0x5e build/rv32/src/main.o
+ .text.task_mavlink_tx
+                0x800002b2        0x2 build/rv32/src/main.o
+ .text.task_logger
+                0x800002b4        0x2 build/rv32/src/main.o
+ .text.startup.main
+                0x800002b6      0x186 build/rv32/src/main.o
+                0x800002b6                main
+ .text.sched_run
+                0x8000043c       0xa0 build/rv32/src/sched.o
+                0x8000043c                sched_run
+ .text.hal_time_init
+                0x800004dc        0x2 build/rv32/src/hal_emu/time.o
+                0x800004dc                hal_time_init
+ .text.hal_time_us
+                0x800004de       0x18 build/rv32/src/hal_emu/time.o
+                0x800004de                hal_time_us
+ .text.hal_cycles
+                0x800004f6       0x12 build/rv32/src/hal_emu/time.o
+                0x800004f6                hal_cycles
+ .text.hal_delay_us
+                0x80000508       0x34 build/rv32/src/hal_emu/time.o
+                0x80000508                hal_delay_us
+ .text.hal_delay_ms
+                0x8000053c        0xa build/rv32/src/hal_emu/time.o
+                0x8000053c                hal_delay_ms
+ .text.hal_uart_init
+                0x80000546        0x4 build/rv32/src/hal_emu/uart.o
+                0x80000546                hal_uart_init
+ .text.hal_uart_read
+                0x8000054a       0x3a build/rv32/src/hal_emu/uart.o
+                0x8000054a                hal_uart_read
+ .text.hal_gpio_init
+                0x80000584       0x10 build/rv32/src/hal_emu/gpio.o
+                0x80000584                hal_gpio_init
+ .text.hal_imu_init
+                0x80000594       0x94 build/rv32/src/hal_emu/spi.o
+                0x80000594                hal_imu_init
+ .text.hal_imu_read
+                0x80000628       0xb0 build/rv32/src/hal_emu/spi.o
+                0x80000628                hal_imu_read
+ .text.hal_baro_init
+                0x800006d8       0x22 build/rv32/src/hal_emu/i2c.o
+                0x800006d8                hal_baro_init
+ .text.hal_baro_read
+                0x800006fa       0x80 build/rv32/src/hal_emu/i2c.o
+                0x800006fa                hal_baro_read
+ .text.hal_mag_init
+                0x8000077a       0x30 build/rv32/src/hal_emu/i2c.o
+                0x8000077a                hal_mag_init
+ .text.hal_mag_read
+                0x800007aa       0x66 build/rv32/src/hal_emu/i2c.o
+                0x800007aa                hal_mag_read
+ .text.hal_adc_init
+                0x80000810        0xc build/rv32/src/hal_emu/adc.o
+                0x80000810                hal_adc_init
+ .text.hal_adc_read
+                0x8000081c       0x7e build/rv32/src/hal_emu/adc.o
+                0x8000081c                hal_adc_read
+ .text.hal_pwm_init
+                0x8000089a       0x10 build/rv32/src/hal_emu/pwm.o
+                0x8000089a                hal_pwm_init
+ .text.hal_pwm_set_norm
+                0x800008aa       0x3a build/rv32/src/hal_emu/pwm.o
+                0x800008aa                hal_pwm_set_norm
+ .text.hal_pwm_arm_outputs
+                0x800008e4       0x16 build/rv32/src/hal_emu/pwm.o
+                0x800008e4                hal_pwm_arm_outputs
+ .text.hal_gnss_init
+                0x800008fa       0x16 build/rv32/src/hal_emu/gnss.o
+                0x800008fa                hal_gnss_init
+ .text.hal_rc_init
+                0x80000910       0x16 build/rv32/src/hal_emu/rc.o
+                0x80000910                hal_rc_init
+ .text.ctrl_stub_update
+                0x80000926       0x34 build/rv32/src/ctrl_stub/ctrl_stub.o
+ .text.ctrl_stub_reset
+                0x8000095a       0x24 build/rv32/src/ctrl_stub/ctrl_stub.o
+ .text.ctrl_stub_init
+                0x8000097e       0x28 build/rv32/src/ctrl_stub/ctrl_stub.o
+ .text.__mulsf3
+                0x800009a6      0x32a /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(mulsf3.o)
+                0x800009a6                __mulsf3
+ .text.__fixunssfsi
+                0x80000cd0       0x4a /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(fixunssfsi.o)
+                0x80000cd0                __fixunssfsi
+ .text.__floatsisf
+                0x80000d1a       0xda /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(floatsisf.o)
+                0x80000d1a                __floatsisf
+ .text.__floatunsisf
+                0x80000df4       0xb0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(floatunsisf.o)
+                0x80000df4                __floatunsisf
+ .text.__clzsi2
+                0x80000ea4       0x6e /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_clzsi2.o)
+                0x80000ea4                __clzsi2
+                0x80000f12                        __text_end = .
+
+.rodata         0x80000f14      0x18c
+                0x80000f14                        . = ALIGN (0x4)
+ *(.rodata .rodata.*)
+ .rodata.task_baro
+                0x80000f14       0x1c build/rv32/src/main.o
+ .rodata.main.str1.4
+                0x80000f30       0x4f build/rv32/src/main.o
+ *fill*         0x80000f7f        0x1 
+ .rodata.ctrl_stub_interface
+                0x80000f80        0xc build/rv32/src/ctrl_stub/ctrl_stub.o
+                0x80000f80                ctrl_stub_interface
+ .rodata.__clz_tab
+                0x80000f8c      0x100 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_clz.o)
+                0x80000f8c                __clz_tab
+ *(.srodata .srodata.*)
+ .srodata.cst4  0x8000108c       0x14 build/rv32/src/main.o
+                                  0x8 (size before relaxing)
+ .srodata.cst4  0x800010a0        0x0 build/rv32/src/hal_emu/i2c.o
+                                  0x8 (size before relaxing)
+ .srodata.cst4  0x800010a0        0x0 build/rv32/src/ctrl_stub/ctrl_stub.o
+                                  0x4 (size before relaxing)
+
+.rela.dyn       0x800010a0        0x0
+ .rela.text.entry
+                0x800010a0        0x0 /tmp/ccNHUJJb.o
+ .rela.text.startup.main
+                0x800010a0        0x0 /tmp/ccNHUJJb.o
+
+.data           0x800010a0        0x4
+                0x800010a0                        __data_start = .
+                0x800010a0                        . = ALIGN (0x4)
+ *(.data .data.*)
+ *(.sdata .sdata.*)
+ .sdata.g_ctrl_interface
+                0x800010a0        0x4 build/rv32/src/state/state.o
+                0x800010a0                g_ctrl_interface
+                0x800010a4                        __data_end = .
+
+.bss            0x800010a8      0x32d
+                0x800010a8                        . = ALIGN (0x4)
+                0x800010a8                        __bss_start = .
+ *(.bss .bss.*)
+ .bss.g_tasks   0x800010a8      0x280 build/rv32/src/main.o
+ .bss.g_motor_out
+                0x80001328       0x12 build/rv32/src/state/state.o
+                0x80001328                g_motor_out
+ *fill*         0x8000133a        0x2 
+ .bss.g_setpoints
+                0x8000133c       0x2c build/rv32/src/state/state.o
+                0x8000133c                g_setpoints
+ .bss.g_vehicle_state
+                0x80001368       0x60 build/rv32/src/state/state.o
+                0x80001368                g_vehicle_state
+ *(.sbss .sbss.*)
+ .sbss.g_baro_start_us
+                0x800013c8        0x8 build/rv32/src/main.o
+ .sbss.g_baro_state
+                0x800013d0        0x4 build/rv32/src/main.o
+ .sbss.g_task_count
+                0x800013d4        0x1 build/rv32/src/main.o
+ *(COMMON)
+                0x800013d5                        __bss_end = .
+                0x800013e0                        . = ALIGN (0x10)
+                0x800013e0                        _end = .
+                0x80040000                        __stack_top = (ORIGIN (RAM) + LENGTH (RAM))
+OUTPUT(build/rv32/firmware.elf elf32-littleriscv)
+
+.riscv.attributes
+                0x00000000       0x5b
+ .riscv.attributes
+                0x00000000       0x55 /tmp/ccNHUJJb.o
+ .riscv.attributes
+                0x00000055       0x57 build/rv32/src/main.o
+ .riscv.attributes
+                0x000000ac       0x57 build/rv32/src/sched.o
+ .riscv.attributes
+                0x00000103       0x5b build/rv32/src/hal_emu/time.o
+ .riscv.attributes
+                0x0000015e       0x57 build/rv32/src/hal_emu/uart.o
+ .riscv.attributes
+                0x000001b5       0x57 build/rv32/src/hal_emu/gpio.o
+ .riscv.attributes
+                0x0000020c       0x57 build/rv32/src/hal_emu/spi.o
+ .riscv.attributes
+                0x00000263       0x57 build/rv32/src/hal_emu/i2c.o
+ .riscv.attributes
+                0x000002ba       0x57 build/rv32/src/hal_emu/adc.o
+ .riscv.attributes
+                0x00000311       0x57 build/rv32/src/hal_emu/pwm.o
+ .riscv.attributes
+                0x00000368       0x57 build/rv32/src/hal_emu/gnss.o
+ .riscv.attributes
+                0x000003bf       0x57 build/rv32/src/hal_emu/rc.o
+ .riscv.attributes
+                0x00000416       0x57 build/rv32/src/state/state.o
+ .riscv.attributes
+                0x0000046d       0x57 build/rv32/src/ctrl_stub/ctrl_stub.o
+ .riscv.attributes
+                0x000004c4       0x4e /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(mulsf3.o)
+ .riscv.attributes
+                0x00000512       0x4e /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(fixunssfsi.o)
+ .riscv.attributes
+                0x00000560       0x4e /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(floatsisf.o)
+ .riscv.attributes
+                0x000005ae       0x4e /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(floatunsisf.o)
+ .riscv.attributes
+                0x000005fc       0x4e /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_clz.o)
+ .riscv.attributes
+                0x0000064a       0x4e /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_clzsi2.o)
+
+.comment        0x00000000       0x33
+ .comment       0x00000000       0x33 build/rv32/src/main.o
+                                 0x34 (size before relaxing)
+ .comment       0x00000033        0x0 build/rv32/src/sched.o
+                                 0x34 (size before relaxing)
+ .comment       0x00000033        0x0 build/rv32/src/hal_emu/time.o
+                                 0x34 (size before relaxing)
+ .comment       0x00000033        0x0 build/rv32/src/hal_emu/uart.o
+                                 0x34 (size before relaxing)
+ .comment       0x00000033        0x0 build/rv32/src/hal_emu/gpio.o
+                                 0x34 (size before relaxing)
+ .comment       0x00000033        0x0 build/rv32/src/hal_emu/spi.o
+                                 0x34 (size before relaxing)
+ .comment       0x00000033        0x0 build/rv32/src/hal_emu/i2c.o
+                                 0x34 (size before relaxing)
+ .comment       0x00000033        0x0 build/rv32/src/hal_emu/adc.o
+                                 0x34 (size before relaxing)
+ .comment       0x00000033        0x0 build/rv32/src/hal_emu/pwm.o
+                                 0x34 (size before relaxing)
+ .comment       0x00000033        0x0 build/rv32/src/hal_emu/gnss.o
+                                 0x34 (size before relaxing)
+ .comment       0x00000033        0x0 build/rv32/src/hal_emu/rc.o
+                                 0x34 (size before relaxing)
+ .comment       0x00000033        0x0 build/rv32/src/state/state.o
+                                 0x34 (size before relaxing)
+ .comment       0x00000033        0x0 build/rv32/src/ctrl_stub/ctrl_stub.o
+                                 0x34 (size before relaxing)
+ .comment       0x00000033        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(mulsf3.o)
+                                 0x34 (size before relaxing)
+ .comment       0x00000033        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(fixunssfsi.o)
+                                 0x34 (size before relaxing)
+ .comment       0x00000033        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(floatsisf.o)
+                                 0x34 (size before relaxing)
+ .comment       0x00000033        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(floatunsisf.o)
+                                 0x34 (size before relaxing)
+ .comment       0x00000033        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_clz.o)
+                                 0x34 (size before relaxing)
+ .comment       0x00000033        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_clzsi2.o)
+                                 0x34 (size before relaxing)
+
+.note.GNU-stack
+                0x00000000        0x0
+ .note.GNU-stack
+                0x00000000        0x0 build/rv32/src/main.o
+ .note.GNU-stack
+                0x00000000        0x0 build/rv32/src/sched.o
+ .note.GNU-stack
+                0x00000000        0x0 build/rv32/src/hal_emu/time.o
+ .note.GNU-stack
+                0x00000000        0x0 build/rv32/src/hal_emu/uart.o
+ .note.GNU-stack
+                0x00000000        0x0 build/rv32/src/hal_emu/gpio.o
+ .note.GNU-stack
+                0x00000000        0x0 build/rv32/src/hal_emu/spi.o
+ .note.GNU-stack
+                0x00000000        0x0 build/rv32/src/hal_emu/i2c.o
+ .note.GNU-stack
+                0x00000000        0x0 build/rv32/src/hal_emu/adc.o
+ .note.GNU-stack
+                0x00000000        0x0 build/rv32/src/hal_emu/pwm.o
+ .note.GNU-stack
+                0x00000000        0x0 build/rv32/src/hal_emu/gnss.o
+ .note.GNU-stack
+                0x00000000        0x0 build/rv32/src/hal_emu/rc.o
+ .note.GNU-stack
+                0x00000000        0x0 build/rv32/src/state/state.o
+ .note.GNU-stack
+                0x00000000        0x0 build/rv32/src/ctrl_stub/ctrl_stub.o
+ .note.GNU-stack
+                0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(mulsf3.o)
+ .note.GNU-stack
+                0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(fixunssfsi.o)
+ .note.GNU-stack
+                0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(floatsisf.o)
+ .note.GNU-stack
+                0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(floatunsisf.o)
+ .note.GNU-stack
+                0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_clz.o)
+ .note.GNU-stack
+                0x00000000        0x0 /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a(_clzsi2.o)
+
+.debug_line     0x00000000     0x29ca
+ .debug_line    0x00000000       0x7a /tmp/ccNHUJJb.o
+ .debug_line    0x0000007a      0x7fe build/rv32/src/main.o
+ .debug_line    0x00000878      0x1fa build/rv32/src/sched.o
+ .debug_line    0x00000a72      0x294 build/rv32/src/hal_emu/time.o
+ .debug_line    0x00000d06      0x222 build/rv32/src/hal_emu/uart.o
+ .debug_line    0x00000f28      0x1f3 build/rv32/src/hal_emu/gpio.o
+ .debug_line    0x0000111b      0x525 build/rv32/src/hal_emu/spi.o
+ .debug_line    0x00001640      0x69f build/rv32/src/hal_emu/i2c.o
+ .debug_line    0x00001cdf      0x23a build/rv32/src/hal_emu/adc.o
+ .debug_line    0x00001f19      0x305 build/rv32/src/hal_emu/pwm.o
+ .debug_line    0x0000221e      0x12b build/rv32/src/hal_emu/gnss.o
+ .debug_line    0x00002349      0x12b build/rv32/src/hal_emu/rc.o
+ .debug_line    0x00002474      0x2a8 build/rv32/src/state/state.o
+ .debug_line    0x0000271c      0x2ae build/rv32/src/ctrl_stub/ctrl_stub.o
+
+.debug_line_str
+                0x00000000      0x244
+ .debug_line_str
+                0x00000000      0x244 /tmp/ccNHUJJb.o
+                                 0x2f (size before relaxing)
+ .debug_line_str
+                0x00000244        0x0 build/rv32/src/main.o
+                                 0xe8 (size before relaxing)
+ .debug_line_str
+                0x00000244        0x0 build/rv32/src/sched.o
+                                 0xa9 (size before relaxing)
+ .debug_line_str
+                0x00000244        0x0 build/rv32/src/hal_emu/time.o
+                                 0xc9 (size before relaxing)
+ .debug_line_str
+                0x00000244        0x0 build/rv32/src/hal_emu/uart.o
+                                 0xcc (size before relaxing)
+ .debug_line_str
+                0x00000244        0x0 build/rv32/src/hal_emu/gpio.o
+                                 0xcc (size before relaxing)
+ .debug_line_str
+                0x00000244        0x0 build/rv32/src/hal_emu/spi.o
+                                 0xe0 (size before relaxing)
+ .debug_line_str
+                0x00000244        0x0 build/rv32/src/hal_emu/i2c.o
+                                 0xe7 (size before relaxing)
+ .debug_line_str
+                0x00000244        0x0 build/rv32/src/hal_emu/adc.o
+                                 0xd0 (size before relaxing)
+ .debug_line_str
+                0x00000244        0x0 build/rv32/src/hal_emu/pwm.o
+                                 0xb7 (size before relaxing)
+ .debug_line_str
+                0x00000244        0x0 build/rv32/src/hal_emu/gnss.o
+                                 0xe3 (size before relaxing)
+ .debug_line_str
+                0x00000244        0x0 build/rv32/src/hal_emu/rc.o
+                                 0xdd (size before relaxing)
+ .debug_line_str
+                0x00000244        0x0 build/rv32/src/state/state.o
+                                0x100 (size before relaxing)
+ .debug_line_str
+                0x00000244        0x0 build/rv32/src/ctrl_stub/ctrl_stub.o
+                                 0xf1 (size before relaxing)
+
+.debug_info     0x00000000     0x45c7
+ .debug_info    0x00000000       0x24 /tmp/ccNHUJJb.o
+ .debug_info    0x00000024      0xf2e build/rv32/src/main.o
+ .debug_info    0x00000f52      0x2ac build/rv32/src/sched.o
+ .debug_info    0x000011fe      0x356 build/rv32/src/hal_emu/time.o
+ .debug_info    0x00001554      0x320 build/rv32/src/hal_emu/uart.o
+ .debug_info    0x00001874      0x326 build/rv32/src/hal_emu/gpio.o
+ .debug_info    0x00001b9a      0x756 build/rv32/src/hal_emu/spi.o
+ .debug_info    0x000022f0      0x8f9 build/rv32/src/hal_emu/i2c.o
+ .debug_info    0x00002be9      0x31a build/rv32/src/hal_emu/adc.o
+ .debug_info    0x00002f03      0x384 build/rv32/src/hal_emu/pwm.o
+ .debug_info    0x00003287      0x301 build/rv32/src/hal_emu/gnss.o
+ .debug_info    0x00003588      0x2a2 build/rv32/src/hal_emu/rc.o
+ .debug_info    0x0000382a      0x811 build/rv32/src/state/state.o
+ .debug_info    0x0000403b      0x58c build/rv32/src/ctrl_stub/ctrl_stub.o
+
+.debug_abbrev   0x00000000     0x14db
+ .debug_abbrev  0x00000000       0x14 /tmp/ccNHUJJb.o
+ .debug_abbrev  0x00000014      0x2a6 build/rv32/src/main.o
+ .debug_abbrev  0x000002ba      0x14a build/rv32/src/sched.o
+ .debug_abbrev  0x00000404      0x18c build/rv32/src/hal_emu/time.o
+ .debug_abbrev  0x00000590      0x198 build/rv32/src/hal_emu/uart.o
+ .debug_abbrev  0x00000728      0x166 build/rv32/src/hal_emu/gpio.o
+ .debug_abbrev  0x0000088e      0x1f3 build/rv32/src/hal_emu/spi.o
+ .debug_abbrev  0x00000a81      0x1d4 build/rv32/src/hal_emu/i2c.o
+ .debug_abbrev  0x00000c55      0x164 build/rv32/src/hal_emu/adc.o
+ .debug_abbrev  0x00000db9      0x151 build/rv32/src/hal_emu/pwm.o
+ .debug_abbrev  0x00000f0a      0x182 build/rv32/src/hal_emu/gnss.o
+ .debug_abbrev  0x0000108c      0x162 build/rv32/src/hal_emu/rc.o
+ .debug_abbrev  0x000011ee      0x16b build/rv32/src/state/state.o
+ .debug_abbrev  0x00001359      0x182 build/rv32/src/ctrl_stub/ctrl_stub.o
+
+.debug_aranges  0x00000000      0x308
+ .debug_aranges
+                0x00000000       0x20 /tmp/ccNHUJJb.o
+ .debug_aranges
+                0x00000020       0x80 build/rv32/src/main.o
+ .debug_aranges
+                0x000000a0       0x28 build/rv32/src/sched.o
+ .debug_aranges
+                0x000000c8       0x48 build/rv32/src/hal_emu/time.o
+ .debug_aranges
+                0x00000110       0x30 build/rv32/src/hal_emu/uart.o
+ .debug_aranges
+                0x00000140       0x38 build/rv32/src/hal_emu/gpio.o
+ .debug_aranges
+                0x00000178       0x28 build/rv32/src/hal_emu/spi.o
+ .debug_aranges
+                0x000001a0       0x38 build/rv32/src/hal_emu/i2c.o
+ .debug_aranges
+                0x000001d8       0x28 build/rv32/src/hal_emu/adc.o
+ .debug_aranges
+                0x00000200       0x40 build/rv32/src/hal_emu/pwm.o
+ .debug_aranges
+                0x00000240       0x38 build/rv32/src/hal_emu/gnss.o
+ .debug_aranges
+                0x00000278       0x38 build/rv32/src/hal_emu/rc.o
+ .debug_aranges
+                0x000002b0       0x28 build/rv32/src/state/state.o
+ .debug_aranges
+                0x000002d8       0x30 build/rv32/src/ctrl_stub/ctrl_stub.o
+
+.debug_str      0x00000000      0xb46
+ .debug_str     0x00000000      0xb46 /tmp/ccNHUJJb.o
+                                 0x3b (size before relaxing)
+ .debug_str     0x00000b46        0x0 build/rv32/src/main.o
+                                0x775 (size before relaxing)
+ .debug_str     0x00000b46        0x0 build/rv32/src/sched.o
+                                0x249 (size before relaxing)
+ .debug_str     0x00000b46        0x0 build/rv32/src/hal_emu/time.o
+                                0x210 (size before relaxing)
+ .debug_str     0x00000b46        0x0 build/rv32/src/hal_emu/uart.o
+                                0x233 (size before relaxing)
+ .debug_str     0x00000b46        0x0 build/rv32/src/hal_emu/gpio.o
+                                0x20e (size before relaxing)
+ .debug_str     0x00000b46        0x0 build/rv32/src/hal_emu/spi.o
+                                0x206 (size before relaxing)
+ .debug_str     0x00000b46        0x0 build/rv32/src/hal_emu/i2c.o
+                                0x251 (size before relaxing)
+ .debug_str     0x00000b46        0x0 build/rv32/src/hal_emu/adc.o
+                                0x1df (size before relaxing)
+ .debug_str     0x00000b46        0x0 build/rv32/src/hal_emu/pwm.o
+                                0x206 (size before relaxing)
+ .debug_str     0x00000b46        0x0 build/rv32/src/hal_emu/gnss.o
+                                0x29f (size before relaxing)
+ .debug_str     0x00000b46        0x0 build/rv32/src/hal_emu/rc.o
+                                0x256 (size before relaxing)
+ .debug_str     0x00000b46        0x0 build/rv32/src/state/state.o
+                                0x516 (size before relaxing)
+ .debug_str     0x00000b46        0x0 build/rv32/src/ctrl_stub/ctrl_stub.o
+                                0x42f (size before relaxing)
+
+.debug_loclists
+                0x00000000     0x12a4
+ .debug_loclists
+                0x00000000      0x1e5 build/rv32/src/main.o
+ .debug_loclists
+                0x000001e5       0xd3 build/rv32/src/sched.o
+ .debug_loclists
+                0x000002b8       0xdd build/rv32/src/hal_emu/time.o
+ .debug_loclists
+                0x00000395      0x111 build/rv32/src/hal_emu/uart.o
+ .debug_loclists
+                0x000004a6      0x111 build/rv32/src/hal_emu/gpio.o
+ .debug_loclists
+                0x000005b7      0x319 build/rv32/src/hal_emu/spi.o
+ .debug_loclists
+                0x000008d0      0x3f6 build/rv32/src/hal_emu/i2c.o
+ .debug_loclists
+                0x00000cc6      0x101 build/rv32/src/hal_emu/adc.o
+ .debug_loclists
+                0x00000dc7      0x285 build/rv32/src/hal_emu/pwm.o
+ .debug_loclists
+                0x0000104c       0x46 build/rv32/src/hal_emu/gnss.o
+ .debug_loclists
+                0x00001092       0x46 build/rv32/src/hal_emu/rc.o
+ .debug_loclists
+                0x000010d8       0xeb build/rv32/src/state/state.o
+ .debug_loclists
+                0x000011c3       0xe1 build/rv32/src/ctrl_stub/ctrl_stub.o
+
+.debug_rnglists
+                0x00000000      0x3f6
+ .debug_rnglists
+                0x00000000       0x69 build/rv32/src/main.o
+ .debug_rnglists
+                0x00000069       0x44 build/rv32/src/sched.o
+ .debug_rnglists
+                0x000000ad       0x4f build/rv32/src/hal_emu/time.o
+ .debug_rnglists
+                0x000000fc       0x49 build/rv32/src/hal_emu/uart.o
+ .debug_rnglists
+                0x00000145       0x31 build/rv32/src/hal_emu/gpio.o
+ .debug_rnglists
+                0x00000176       0x5a build/rv32/src/hal_emu/spi.o
+ .debug_rnglists
+                0x000001d0       0xce build/rv32/src/hal_emu/i2c.o
+ .debug_rnglists
+                0x0000029e       0x6b build/rv32/src/hal_emu/adc.o
+ .debug_rnglists
+                0x00000309       0x43 build/rv32/src/hal_emu/pwm.o
+ .debug_rnglists
+                0x0000034c       0x25 build/rv32/src/hal_emu/gnss.o
+ .debug_rnglists
+                0x00000371       0x25 build/rv32/src/hal_emu/rc.o
+ .debug_rnglists
+                0x00000396       0x1a build/rv32/src/state/state.o
+ .debug_rnglists
+                0x000003b0       0x46 build/rv32/src/ctrl_stub/ctrl_stub.o
+
+.debug_frame    0x00000000      0x604
+ .debug_frame   0x00000000      0x170 build/rv32/src/main.o
+ .debug_frame   0x00000170       0x58 build/rv32/src/sched.o
+ .debug_frame   0x000001c8       0x94 build/rv32/src/hal_emu/time.o
+ .debug_frame   0x0000025c       0x40 build/rv32/src/hal_emu/uart.o
+ .debug_frame   0x0000029c       0x50 build/rv32/src/hal_emu/gpio.o
+ .debug_frame   0x000002ec       0x5c build/rv32/src/hal_emu/spi.o
+ .debug_frame   0x00000348       0x88 build/rv32/src/hal_emu/i2c.o
+ .debug_frame   0x000003d0       0x50 build/rv32/src/hal_emu/adc.o
+ .debug_frame   0x00000420       0x60 build/rv32/src/hal_emu/pwm.o
+ .debug_frame   0x00000480       0x5c build/rv32/src/hal_emu/gnss.o
+ .debug_frame   0x000004dc       0x5c build/rv32/src/hal_emu/rc.o
+ .debug_frame   0x00000538       0x58 build/rv32/src/state/state.o
+ .debug_frame   0x00000590       0x74 build/rv32/src/ctrl_stub/ctrl_stub.o
