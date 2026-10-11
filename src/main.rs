@@ -56,6 +56,14 @@ struct Cli {
     /// QSPI flash backing file for persistence across runs
     #[arg(long)]
     flash_file: Option<String>,
+
+    /// Strict memory mode: fault on unmapped access, PC=0 is fault
+    #[arg(long)]
+    strict_mem: bool,
+
+    /// Test finished register address (sets exit code when written)
+    #[arg(long)]
+    test_finished_reg: Option<u32>,
 }
 
 struct RawModeGuard;
@@ -76,7 +84,7 @@ impl Drop for RawModeGuard {
 fn main() {
     let cli = Cli::parse();
     let flash_file = cli.flash_file.clone();
-    let mut bus = Bus::new(cli.ipc, flash_file);
+    let mut bus = Bus::new(cli.ipc, flash_file, cli.strict_mem, cli.test_finished_reg);
 
     eprintln!("[INFO] Loading ELF: {}", cli.elf);
     if cli.ipc {
@@ -84,6 +92,12 @@ fn main() {
     }
     if let Some(ref f) = cli.flash_file {
         eprintln!("[INFO] QSPI flash backing file: {}", f);
+    }
+    if cli.strict_mem {
+        eprintln!("[INFO] Strict memory mode enabled");
+    }
+    if let Some(reg) = cli.test_finished_reg {
+        eprintln!("[INFO] Test finished register: 0x{:08x}", reg);
     }
     let entry_point = bus.load_elf(&cli.elf);
     eprintln!("[INFO] Entry point: 0x{:08x}", entry_point);

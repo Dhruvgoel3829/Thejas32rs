@@ -21,6 +21,7 @@ pub struct Cpu {
     pub csr: Csr,
     pub bus: Bus,
     pub atomic_reservation: Option<u32>, // Holds reserved physical memory address
+    pub strict_mem: bool,
 }
 
 const REG_NAMES: [&str; 32] = [
@@ -31,12 +32,14 @@ const REG_NAMES: [&str; 32] = [
 
 impl Cpu {
     pub fn new(bus: Bus, entry_point: u32) -> Self {
+        let strict_mem = bus.strict_mem;
         Self {
             regs: [0; 32],
             pc: entry_point,
             csr: Csr::new(),
             bus,
             atomic_reservation: None,
+            strict_mem,
         }
     }
 
@@ -185,6 +188,11 @@ impl Cpu {
             }
             self.handle_trap(cause, self.pc);
             return;
+        }
+        // Strict memory mode: PC=0 is a fault
+        if self.strict_mem && self.pc == 0 {
+            self.bus.plic.pending &= !(1 << 1); // Clear UART interrupt
+            panic!("Strict memory mode: PC=0 is a fault");
         }
         // 3. Fetch instruction (Variable-length 16-bit / 32-bit)
         let raw_16_lo = self.bus.read_u16(self.pc);

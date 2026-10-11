@@ -36,28 +36,32 @@ pub struct Bus {
     pub pwm: Pwm,
     pub dma: Dma,
     pub wdt: Wdt,
+    pub strict_mem: bool,
+    pub test_finished_reg: Option<u32>,
 }
 
 impl Bus {
-    pub fn new(enable_ipc: bool, flash_file: Option<String>) -> Self {
+    pub fn new(enable_ipc: bool, flash_file: Option<String>, strict_mem: bool, test_finished_reg: Option<u32>) -> Self {
         let ipc = enable_ipc;
         Self {
             ram: vec![0; RAM_SIZE],
             flash: QspiFlash::with_backing_file(flash_file),
-            uart0: Uart::new(if ipc { Some("/tmp/thejas_uart0.sock") } else { None }),
-            uart1: Uart::new(if ipc { Some("/tmp/thejas_uart1.sock") } else { None }),
-            uart2: Uart::new(if ipc { Some("/tmp/thejas_uart2.sock") } else { None }),
+            uart0: Uart::new(if enable_ipc { Some("/tmp/thejas_uart0.sock") } else { None }),
+            uart1: Uart::new(if enable_ipc { Some("/tmp/thejas_uart1.sock") } else { None }),
+            uart2: Uart::new(if enable_ipc { Some("/tmp/thejas_uart2.sock") } else { None }),
             clint: Clint::new(),
             plic: Plic::new(),
-            gpio: Gpio::new(ipc),
+            gpio: Gpio::new(enable_ipc),
             timer: Timer::new(),
-            spi: Spi::new(ipc),
+            spi: Spi::new(enable_ipc),
             i2s: I2s::new(),
-            i2c: I2c::new(ipc),
-            adc: Adc::new(ipc),
-            pwm: Pwm::new(ipc),
+            i2c: I2c::new(enable_ipc),
+            adc: Adc::new(enable_ipc),
+            pwm: Pwm::new(enable_ipc),
             dma: Dma::new(),
             wdt: Wdt::new(),
+            strict_mem,
+            test_finished_reg,
         }
     }
 
@@ -139,7 +143,15 @@ impl Bus {
     }
 
     pub fn read_u8(&mut self, addr: u32) -> u8 {
-        match addr {
+        // Check for test-finished register read
+        if let Some(reg) = self.test_finished_reg {
+            if addr == reg {
+                // Reading the test-finished register returns 0
+                return 0;
+            }
+        }
+
+        let result = match addr {
             // Flash XIP Memory Window (0x4000_0000 - 0x40FF_FFFF)
             0x4000_0000..=0x40FF_FFFF => self.flash.read_u8(addr - FLASH_BASE),
 
@@ -207,11 +219,26 @@ impl Bus {
                 let shift = (offset & 0x3) * 8;
                 ((self.wdt.read_u32(offset & !0x3) >> shift) & 0xFF) as u8
             }
-            _ => 0,
-        }
+            _ => {
+                // Strict memory mode: fault on unmapped access
+                if self.strict_mem {
+                    panic!("Strict memory mode: read from unmapped address 0x{:08x}", addr);
+                }
+                0
+            },
+        };
+        result
     }
 
     pub fn write_u8(&mut self, addr: u32, val: u8) {
+        // Check for test-finished register write
+        if let Some(reg) = self.test_finished_reg {
+            if addr == reg {
+                // Writing to test-finished register sets exit code
+                std::process::exit(val as i32);
+            }
+        }
+
         match addr {
             // Flash (QSPI) - now writable for byte programming
             0x4000_0000..=0x40FF_FFFF => {
@@ -312,7 +339,12 @@ impl Bus {
                 current = (current & !(0xFF << shift)) | ((val as u32) << shift);
                 self.wdt.write_u32(word_offset, current);
             }
-            _ => {}
+            _ => {
+                // Strict memory mode: fault on unmapped access
+                if self.strict_mem {
+                    panic!("Strict memory mode: write to unmapped address 0x{:08x}", addr);
+                }
+            }
         }
     }
 
