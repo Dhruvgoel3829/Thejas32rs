@@ -39,11 +39,11 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(enable_ipc: bool) -> Self {
+    pub fn new(enable_ipc: bool, flash_file: Option<String>) -> Self {
         let ipc = enable_ipc;
         Self {
             ram: vec![0; RAM_SIZE],
-            flash: QspiFlash::new(),
+            flash: QspiFlash::with_backing_file(flash_file),
             uart0: Uart::new(if ipc { Some("/tmp/thejas_uart0.sock") } else { None }),
             uart1: Uart::new(if ipc { Some("/tmp/thejas_uart1.sock") } else { None }),
             uart2: Uart::new(if ipc { Some("/tmp/thejas_uart2.sock") } else { None }),
@@ -213,8 +213,10 @@ impl Bus {
 
     pub fn write_u8(&mut self, addr: u32, val: u8) {
         match addr {
-            // Flash is read-only for direct writes
-            0x4000_0000..=0x40FF_FFFF => {}
+            // Flash (QSPI) - now writable for byte programming
+            0x4000_0000..=0x40FF_FFFF => {
+                self.flash.write_u8(addr - FLASH_BASE, val);
+            }
 
             // SRAM
             0x8000_0000..=0x8007_FFFF => {
@@ -377,7 +379,11 @@ impl Bus {
 
     pub fn write_u32(&mut self, addr: u32, val: u32) {
         match addr {
-            0x4000_0000..=0x40FF_FFFF => {} // Read-only
+            // Flash (QSPI) - writable for word programming
+            0x4000_0000..=0x40FF_FFFF => {
+                let bytes = val.to_le_bytes();
+                self.flash.write_bytes(addr - FLASH_BASE, &bytes);
+            }
             0x8000_0000..=0x8007_FFFF => {
                 let offset = (addr - RAM_BASE) as usize;
                 let bytes = val.to_le_bytes();

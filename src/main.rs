@@ -52,6 +52,10 @@ struct Cli {
     /// Enable IPC mode (Unix sockets for external simulator/sensor bridges)
     #[arg(long)]
     ipc: bool,
+
+    /// QSPI flash backing file for persistence across runs
+    #[arg(long)]
+    flash_file: Option<String>,
 }
 
 struct RawModeGuard;
@@ -71,11 +75,15 @@ impl Drop for RawModeGuard {
 
 fn main() {
     let cli = Cli::parse();
-    let mut bus = Bus::new(cli.ipc);
+    let flash_file = cli.flash_file.clone();
+    let mut bus = Bus::new(cli.ipc, flash_file);
 
     eprintln!("[INFO] Loading ELF: {}", cli.elf);
     if cli.ipc {
         eprintln!("[INFO] IPC mode enabled (Unix sockets: /tmp/thejas_spi.sock, /tmp/thejas_gpio.sock)");
+    }
+    if let Some(ref f) = cli.flash_file {
+        eprintln!("[INFO] QSPI flash backing file: {}", f);
     }
     let entry_point = bus.load_elf(&cli.elf);
     eprintln!("[INFO] Entry point: 0x{:08x}", entry_point);
