@@ -1,4 +1,5 @@
 // src/i2c.rs
+// I2C with extended IPC protocol for multi-byte reads (MS5611, HMC5883L)
 
 use crate::ipc::SocketBackend;
 
@@ -11,11 +12,17 @@ const I2C_SR: u32   = 0x04;
 const I2C_ADDR: u32 = 0x08;
 const I2C_DATA: u32 = 0x0C;
 
+// IPC Protocol opcodes
+const I2C_IPC_WRITE: u8 = 0x00;  // Write: [0x00, addr, reg?, data...] - reg optional
+const I2C_IPC_READ: u8  = 0x01;  // Read:  [0x01, addr, reg?, num_bytes] - reg optional
+
 pub struct I2c {
     pub cr: u32,
     pub sr: u32,
     pub addr: u8,
-    pub rx_buf: u8,
+    pub rx_buf: [u8; 16],  // Buffer for multi-byte reads
+    rx_len: u8,
+    rx_pos: u8,
     // Virtual 256-byte 24C02 EEPROM at address 0x50
     eeprom_memory: [u8; 256],
     eeprom_ptr: u8,
@@ -29,7 +36,10 @@ impl I2c {
             cr: 0,
             sr: 0x04, // Default: ACK received
             addr: 0,
-            rx_buf: 0,
+            rx_buf: [0; 16],
+            rx_len: 0,
+            rx_pos: 0,
+            // Virtual 256-byte 24C02 EEPROM at address 0x50
             eeprom_memory: [0xFF; 256],
             eeprom_ptr: 0,
             eeprom_addr_latch: false,
@@ -47,25 +57,55 @@ impl I2c {
             I2C_SR => self.sr,
             I2C_ADDR => self.addr as u32,
             I2C_DATA => {
-                // If IPC enabled, try to read from external I2C device
-                if let Some(ref mut ipc) = self.ipc {
-                    if self.addr != 0x50 && self.addr != 0 {
-                        // Forward read request to external I2C device
-                        let req = [0x01, self.addr, self.eeprom_ptr];
-                        ipc.send(&req);
-                        let mut resp = [0u8; 1];
-                        let n = ipc.recv(&mut resp);
-                        if n == 1 {
-                            self.rx_buf = resp[0];
-                            self.sr |= 0x02; // RX Ready
-                        }
+                if self.rx_pos < self.rx_len {
+                    let byte = self.rx_buf[self.rx_pos as usize];
+                    self.rx_pos += 1;
+                    if self.rx_pos >= self.rx_len {
+                        self.sr &= !0x02; // Clear RX Ready when buffer exhausted
+                    }
+                    return byte as u32;
+                }
+                // No buffered data - try IPC read for external devices
+                if self.addr != 0x50 && self.addr != 0 {
+                    // Try multi-byte read (up to 16 bytes)
+                    if self.ipc_read_multi(16) {
+                        let byte = self.rx_buf[0];
+                        self.rx_pos = 1;
+                        return byte as u32;
+                    }
+                    // Fallback: single byte read
+                    if self.ipc_read_multi(1) {
+                        let byte = self.rx_buf[0];
+                        self.rx_pos = 1;
+                        return byte as u32;
                     }
                 }
                 self.sr &= !0x02; // Clear RX Ready
-                self.rx_buf as u32
+                0
             }
             _ => 0,
         }
+    }
+
+    fn ipc_read_multi(&mut self, num_bytes: u8) -> bool {
+        if self.addr == 0x50 || self.addr == 0 {
+            return false;
+        }
+        if let Some(ref mut ipc) = self.ipc {
+            // Extended read: [0x01, addr, reg?, num_bytes]
+            let req = [I2C_IPC_READ, self.addr, self.eeprom_ptr, num_bytes];
+            ipc.send(&req);
+            let mut resp = [0u8; 16];
+            let n = ipc.recv(&mut resp);
+            if n == num_bytes as usize {
+                self.rx_buf[..num_bytes as usize].copy_from_slice(&resp[..num_bytes as usize]);
+                self.rx_len = num_bytes;
+                self.rx_pos = 0;
+                self.sr |= 0x02; // RX Ready
+                return true;
+            }
+        }
+        false
     }
 
     pub fn write_u32(&mut self, offset: u32, val: u32) {
@@ -77,23 +117,33 @@ impl I2c {
 
                 if is_start {
                     self.eeprom_addr_latch = false;
+                    self.rx_pos = 0;
+                    self.rx_len = 0;
                 }
 
                 if is_read && self.addr == 0x50 {
                     // Read from virtual EEPROM
-                    self.rx_buf = self.eeprom_memory[self.eeprom_ptr as usize];
-                    self.eeprom_ptr = self.eeprom_ptr.wrapping_add(1);
+                    self.rx_buf[0] = self.eeprom_memory[self.eeprom_ptr as usize];
+                    self.rx_len = 1;
+                    self.rx_pos = 0;
                     self.sr |= 0x02; // RX Ready
-                } else if is_read && let Some(ref mut ipc) = self.ipc {
-                    // Forward read request to external I2C device
-                    let req = [0x01, self.addr, self.eeprom_ptr];
-                    ipc.send(&req);
-                    let mut resp = [0u8; 1];
-                    let n = ipc.recv(&mut resp);
-                    if n == 1 {
-                        self.rx_buf = resp[0];
-                        self.eeprom_ptr = self.eeprom_ptr.wrapping_add(1);
-                        self.sr |= 0x02; // RX Ready
+                } else if is_read && self.addr != 0x50 && self.addr != 0 {
+                    // Try multi-byte read (up to 16 bytes)
+                    if self.ipc_read_multi(16) {
+                        return;
+                    }
+                    // Fallback: single byte
+                    if let Some(ref mut ipc) = self.ipc {
+                        let req = [I2C_IPC_READ, self.addr, self.eeprom_ptr, 1];
+                        ipc.send(&req);
+                        let mut resp = [0u8; 1];
+                        let n = ipc.recv(&mut resp);
+                        if n == 1 {
+                            self.rx_buf[0] = resp[0];
+                            self.rx_len = 1;
+                            self.rx_pos = 0;
+                            self.sr |= 0x02; // RX Ready
+                        }
                     }
                 }
             }
@@ -119,9 +169,15 @@ impl I2c {
                     }
                     self.sr |= 0x04; // ACK
                 } else if let Some(ref mut ipc) = self.ipc {
-                    // Forward write to external I2C device
-                    // Protocol: [0x00, addr, reg, data]
-                    let req = [0x00, self.addr, self.eeprom_ptr, byte];
+                    // Extended write: [0x00, addr, reg?, data...]
+                    let mut req = vec![I2C_IPC_WRITE, self.addr];
+                    if !self.eeprom_addr_latch {
+                        req.push(self.eeprom_ptr); // register
+                        self.eeprom_addr_latch = true;
+                    } else {
+                        req.push(self.eeprom_ptr); // register (current pointer)
+                    }
+                    req.push(byte);
                     ipc.send(&req);
                     self.eeprom_ptr = self.eeprom_ptr.wrapping_add(1);
                     self.sr |= 0x04; // ACK
@@ -129,6 +185,11 @@ impl I2c {
             }
             _ => {}
         }
+    }
+
+    // Public method for firmware to trigger multi-byte reads
+    pub fn trigger_multi_read(&mut self, num_bytes: u8) -> bool {
+        self.ipc_read_multi(num_bytes)
     }
 }
 
@@ -142,7 +203,7 @@ mod tests {
         assert_eq!(i2c.cr, 0);
         assert_eq!(i2c.sr, 0x04); // ACK by default
         assert_eq!(i2c.addr, 0);
-        assert_eq!(i2c.rx_buf, 0);
+        assert_eq!(i2c.rx_buf, [0; 16]);
         assert_eq!(i2c.eeprom_memory, [0xFF; 256]);
         assert_eq!(i2c.eeprom_ptr, 0);
         assert_eq!(i2c.eeprom_addr_latch, false);

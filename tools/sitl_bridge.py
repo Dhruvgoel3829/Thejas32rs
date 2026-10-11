@@ -209,11 +209,14 @@ def i2c_sensor_server():
     client = connect_socket(I2C_SOCK_PATH, "I2C")
     print("[I2C-SERVER] Connected, entering main loop")
 
-    # Protocol from emulator:
-    # Write: [0x00, addr, reg, data]
-    # Read:  [0x01, addr, reg] -> response: [data]
+    # Extended Protocol from emulator:
+    # Write: [0x00, addr, reg?, data...] - variable length
+    #        If reg is known from previous write, can omit (command-only)
+    # Read:  [0x01, addr, reg?, num_bytes] -> response: num_bytes of data
+    #        reg optional if previously set
     current_addr = 0
     current_reg = 0
+    addr_latch = False  # Tracks if reg was set by previous write
 
     try:
         while True:
@@ -222,97 +225,153 @@ def i2c_sensor_server():
             op_type = hdr[0]
 
             if op_type == 0x00:  # Write
-                payload = recv_exact(client, 3)
+                # Read variable length payload: minimum 2 bytes (addr, data), up to 255
+                # Format: [0x00, addr, reg?, data...]
+                # First read addr + at least 1 byte
+                payload = recv_exact(client, 2)
                 if not payload: break
-                addr, reg, data = payload[0], payload[1], payload[2]
+                addr = payload[0]
                 current_addr = addr
-                current_reg = reg
+                
+                # Check if there's more data
+                remaining = client.recv(255, socket.MSG_PEEK)
+                if remaining:
+                    more = recv_exact(client, len(remaining))
+                    payload = payload + more
+                else:
+                    more = b''
+
+                if len(payload) >= 3:
+                    # Format: [addr, reg, data...] - reg provided
+                    reg = payload[1]
+                    data = payload[2:]
+                    current_reg = reg
+                    addr_latch = True
+                elif len(payload) == 2:
+                    # Format: [addr, data] - command-only write (no register)
+                    data = payload[1:]
+                    addr_latch = False
+                else:
+                    continue
 
                 # Handle writes to external I2C sensors
                 if addr == 0x77:  # MS5611 Barometer
                     # MS5611 commands: 0x1E (reset), 0x40-0x46 (D1/D2 conversions), 0xA0-0xAE (PROM reads)
-                    pass
+                    # Command-only writes (no register): 0x1E, 0x40-0x46
+                    if not addr_latch and len(data) >= 1:
+                        cmd = data[0]
+                        if cmd == 0x1E:
+                            # Reset command
+                            pass
+                        elif 0x40 <= cmd <= 0x46:
+                            # D1/D2 conversion commands
+                            pass
                 elif addr == 0x1E:  # HMC5883L Compass
-                    # HMC5883L registers
+                    # HMC5883L registers - write with register
                     pass
                 elif addr == 0x42:  # GPS (common I2C address)
                     # GPS registers
                     pass
 
             elif op_type == 0x01:  # Read
+                # Format: [0x01, addr, reg?, num_bytes]
                 payload = recv_exact(client, 2)
                 if not payload: break
-                addr, reg = payload[0], payload[1]
+                addr = payload[0]
                 current_addr = addr
-                current_reg = reg
+                
+                # Check for optional reg + num_bytes
+                remaining = client.recv(255, socket.MSG_PEEK)
+                if remaining:
+                    more = recv_exact(client, len(remaining))
+                    payload = payload + more
+
+                if len(payload) >= 4:
+                    # Format: [addr, reg, num_bytes]
+                    reg = payload[1]
+                    num_bytes = payload[2]
+                    current_reg = reg
+                    addr_latch = True
+                elif len(payload) == 3:
+                    # Format: [addr, num_bytes] - use latched reg
+                    num_bytes = payload[1]
+                    reg = current_reg
+                    if not addr_latch:
+                        num_bytes = 1  # Default to 1 byte
+                else:
+                    num_bytes = 1
 
                 # Handle reads from external I2C sensors
-                response = 0x00
+                response = bytearray(num_bytes)
 
                 if addr == 0x77:  # MS5611 Barometer
                     with physics_lock:
-                        if reg == 0x00:  # PROM read (simplified)
-                            response = 0x00
-                        else:
-                            # Return pressure/temperature data
-                            # MS5611 returns 24-bit pressure, 24-bit temp
+                        # MS5611: 3-byte ADC result (pressure or temp)
+                        if num_bytes >= 3:
                             pressure = int(latest_baro["pressure"] * 100)  # Pa to cPa
-                            response = (pressure >> 16) & 0xFF if reg == 0x00 else \
-                                       (pressure >> 8) & 0xFF if reg == 0x01 else \
-                                       pressure & 0xFF
+                            response[0] = (pressure >> 16) & 0xFF
+                            response[1] = (pressure >> 8) & 0xFF
+                            response[2] = pressure & 0xFF
+                        elif num_bytes >= 1:
+                            # Temperature (simplified)
+                            temp = int(latest_baro["temperature"] * 100)
+                            response[0] = (temp >> 8) & 0xFF
+                            if num_bytes >= 2:
+                                response[1] = temp & 0xFF
 
                 elif addr == 0x1E:  # HMC5883L Compass
                     with physics_lock:
-                        # HMC5883L data registers: 0x03-0x08 (X, Z, Y MSB/LSB)
+                        # HMC5883L: 6-byte burst read (X MSB, X LSB, Z MSB, Z LSB, Y MSB, Y LSB)
                         mx = int(latest_compass["mx"] * 1000)
                         my = int(latest_compass["my"] * 1000)
                         mz = int(latest_compass["mz"] * 1000)
-                        if reg == 0x03:
-                            response = (mx >> 8) & 0xFF
-                        elif reg == 0x04:
-                            response = mx & 0xFF
-                        elif reg == 0x05:
-                            response = (mz >> 8) & 0xFF
-                        elif reg == 0x06:
-                            response = mz & 0xFF
-                        elif reg == 0x07:
-                            response = (my >> 8) & 0xFF
-                        elif reg == 0x08:
-                            response = my & 0xFF
-                        elif reg == 0x0A:  # Status
-                            response = 0x01  # Data ready
-                        elif reg == 0x0B:  # Config A
-                            response = 0x70  # 8 samples, 15Hz, normal
-                        elif reg == 0x0C:  # Config B
-                            response = 0xA0  # Gain = 5
-                        elif reg == 0x0D:  # Mode
-                            response = 0x00  # Continuous
+                        if num_bytes >= 6:
+                            response[0] = (mx >> 8) & 0xFF  # X MSB
+                            response[1] = mx & 0xFF         # X LSB
+                            response[2] = (mz >> 8) & 0xFF  # Z MSB
+                            response[3] = mz & 0xFF         # Z LSB
+                            response[4] = (my >> 8) & 0xFF  # Y MSB
+                            response[5] = my & 0xFF         # Y LSB
+                        elif num_bytes >= 1:
+                            # Single register reads (backward compat)
+                            if reg == 0x03:
+                                response[0] = (mx >> 8) & 0xFF
+                            elif reg == 0x04:
+                                response[0] = mx & 0xFF
+                            elif reg == 0x05:
+                                response[0] = (mz >> 8) & 0xFF
+                            elif reg == 0x06:
+                                response[0] = mz & 0xFF
+                            elif reg == 0x07:
+                                response[0] = (my >> 8) & 0xFF
+                            elif reg == 0x08:
+                                response[0] = my & 0xFF
+                            elif reg == 0x0A:  # Status
+                                response[0] = 0x01  # Data ready
+                            elif reg == 0x0B:  # Config A
+                                response[0] = 0x70
+                            elif reg == 0x0C:  # Config B
+                                response[0] = 0xA0
+                            elif reg == 0x0D:  # Mode
+                                response[0] = 0x00
 
                 elif addr == 0x42:  # GPS (common I2C)
                     with physics_lock:
-                        # GPS returns NMEA-like data or binary format
-                        # Simplified: return lat/lon as bytes
                         lat = int(latest_gps["lat"] * 1e7)
                         lon = int(latest_gps["lon"] * 1e7)
                         alt = int(latest_gps["alt"] * 1000)
-                        if reg == 0x00:
-                            response = (lat >> 24) & 0xFF
-                        elif reg == 0x01:
-                            response = (lat >> 16) & 0xFF
-                        elif reg == 0x02:
-                            response = (lat >> 8) & 0xFF
-                        elif reg == 0x03:
-                            response = lat & 0xFF
-                        elif reg == 0x04:
-                            response = (lon >> 24) & 0xFF
-                        elif reg == 0x05:
-                            response = (lon >> 16) & 0xFF
-                        elif reg == 0x06:
-                            response = (lon >> 8) & 0xFF
-                        elif reg == 0x07:
-                            response = lon & 0xFF
+                        if num_bytes >= 4:
+                            response[0] = (lat >> 24) & 0xFF
+                            response[1] = (lat >> 16) & 0xFF
+                            response[2] = (lat >> 8) & 0xFF
+                            response[3] = lat & 0xFF
+                            if num_bytes >= 8:
+                                response[4] = (lon >> 24) & 0xFF
+                                response[5] = (lon >> 16) & 0xFF
+                                response[6] = (lon >> 8) & 0xFF
+                                response[7] = lon & 0xFF
 
-                client.sendall(bytes([response]))
+                client.sendall(response)
 
     except (BrokenPipeError, ConnectionResetError):
         pass
