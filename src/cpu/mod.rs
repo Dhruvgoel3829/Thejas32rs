@@ -154,9 +154,9 @@ impl Cpu {
             }
             WdtAction::None => {}
         }
-        // Check if UART received a byte and assert line 1 on the PLIC
-        // UART RX line -> PLIC Source 1
-        if (self.bus.uart.read_u8(0x05) & 0x01) != 0 {
+        // Check if UART0 received a byte and assert line 1 on the PLIC
+        // UART0 RX line -> PLIC Source 1
+        if (self.bus.uart0.read_u8(0x05) & 0x01) != 0 {
             if self.bus.plic.claimed != 1 {
                 self.bus.plic.set_interrupt_pending(1);
             }

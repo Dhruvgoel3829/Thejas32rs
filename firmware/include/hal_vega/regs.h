@@ -20,7 +20,10 @@
 #define CLINT_BASE        0x02000000
 #define PLIC_BASE         0x0C000000
 
-#define UART_BASE         0x10000000
+#define UART0_BASE        0x10000000  /* UART0: Telemetry */
+#define UART1_BASE        0x10001000  /* UART1: GNSS */
+#define UART2_BASE        0x10002000  /* UART2: RC */
+#define UART_SIZE         0x1000
 #define GPIO_BASE         0x10010000
 #define TIMER_BASE        0x10020000
 #define SPI_BASE          0x10030000
@@ -45,10 +48,21 @@
 #define PLIC_THRESHOLD    (PLIC_BASE + 0x200000)
 #define PLIC_CLAIM        (PLIC_BASE + 0x200004)
 
-/* UART Registers (16550-style) */
-#define UART_THR          (UART_BASE + 0x00)
-#define UART_RHR          (UART_BASE + 0x00)
-#define UART_LSR          (UART_BASE + 0x05)
+/* UART Registers (16550-style) - per UART instance */
+#define UART_THR(base)    ((base) + 0x00)
+#define UART_RHR(base)    ((base) + 0x00)
+#define UART_LSR(base)    ((base) + 0x05)
+
+/* Convenience macros for each UART */
+#define UART0_THR         UART_THR(UART0_BASE)
+#define UART0_RHR         UART_RHR(UART0_BASE)
+#define UART0_LSR         UART_LSR(UART0_BASE)
+#define UART1_THR         UART_THR(UART1_BASE)
+#define UART1_RHR         UART_RHR(UART1_BASE)
+#define UART1_LSR         UART_LSR(UART1_BASE)
+#define UART2_THR         UART_THR(UART2_BASE)
+#define UART2_RHR         UART_RHR(UART2_BASE)
+#define UART2_LSR         UART_LSR(UART2_BASE)
 
 /* GPIO Registers */
 #define GPIO_DIR          (GPIO_BASE + 0x00)

@@ -10,7 +10,7 @@ use crate::pwm::{Pwm, PWM_BASE};
 use crate::qspi::{QspiFlash, FLASH_BASE};
 use crate::spi::{Spi, SPI_BASE};
 use crate::timer::{Timer, TIMER_BASE};
-use crate::uart::{Uart, UART_BASE};
+use crate::uart::{Uart, UART0_BASE, UART1_BASE, UART2_BASE};
 use crate::wdt::{Wdt, WDT_BASE};
 
 use goblin::elf::Elf;
@@ -22,7 +22,9 @@ pub const RAM_SIZE: usize = 512 * 1024; // 512 KB
 pub struct Bus {
     pub ram: Vec<u8>,
     pub flash: QspiFlash,
-    pub uart: Uart,
+    pub uart0: Uart,
+    pub uart1: Uart,
+    pub uart2: Uart,
     pub clint: Clint,
     pub plic: Plic,
     pub gpio: Gpio,
@@ -38,19 +40,22 @@ pub struct Bus {
 
 impl Bus {
     pub fn new(enable_ipc: bool) -> Self {
+        let ipc = enable_ipc;
         Self {
             ram: vec![0; RAM_SIZE],
             flash: QspiFlash::new(),
-            uart: Uart::new(enable_ipc),
+            uart0: Uart::new(if ipc { Some("/tmp/thejas_uart0.sock") } else { None }),
+            uart1: Uart::new(if ipc { Some("/tmp/thejas_uart1.sock") } else { None }),
+            uart2: Uart::new(if ipc { Some("/tmp/thejas_uart2.sock") } else { None }),
             clint: Clint::new(),
             plic: Plic::new(),
-            gpio: Gpio::new(enable_ipc),
+            gpio: Gpio::new(ipc),
             timer: Timer::new(),
-            spi: Spi::new(enable_ipc),
+            spi: Spi::new(ipc),
             i2s: I2s::new(),
-            i2c: I2c::new(enable_ipc),
-            adc: Adc::new(enable_ipc),
-            pwm: Pwm::new(enable_ipc),
+            i2c: I2c::new(ipc),
+            adc: Adc::new(ipc),
+            pwm: Pwm::new(ipc),
             dma: Dma::new(),
             wdt: Wdt::new(),
         }
@@ -151,7 +156,12 @@ impl Bus {
                 let shift = (offset & 0x3) * 8;
                 ((self.plic.read_u32(offset & !0x3) >> shift) & 0xFF) as u8
             }
-            0x1000_0000..=0x1000_0FFF => self.uart.read_u8(addr - UART_BASE),
+            // UART0 (Telemetry) at 0x1000_0000
+            0x1000_0000..=0x1000_0FFF => self.uart0.read_u8(addr - UART0_BASE),
+            // UART1 (GNSS) at 0x1000_1000
+            0x1000_1000..=0x1000_1FFF => self.uart1.read_u8(addr - UART1_BASE),
+            // UART2 (RC) at 0x1000_2000
+            0x1000_2000..=0x1000_2FFF => self.uart2.read_u8(addr - UART2_BASE),
             0x1001_0000..=0x1001_0FFF => {
                 let offset = addr - GPIO_BASE;
                 let shift = (offset & 0x3) * 8;
@@ -222,7 +232,12 @@ impl Bus {
                 current = (current & !(0xFF << shift)) | ((val as u32) << shift);
                 self.plic.write_u32(word_offset, current);
             }
-            0x1000_0000..=0x1000_0FFF => self.uart.write_u8(addr - UART_BASE, val),
+            // UART0 (Telemetry) at 0x1000_0000
+            0x1000_0000..=0x1000_0FFF => self.uart0.write_u8(addr - UART0_BASE, val),
+            // UART1 (GNSS) at 0x1000_1000
+            0x1000_1000..=0x1000_1FFF => self.uart1.write_u8(addr - UART1_BASE, val),
+            // UART2 (RC) at 0x1000_2000
+            0x1000_2000..=0x1000_2FFF => self.uart2.write_u8(addr - UART2_BASE, val),
             0x1001_0000..=0x1001_0FFF => {
                 let offset = addr - GPIO_BASE;
                 let word_offset = offset & !0x3;
@@ -341,7 +356,12 @@ impl Bus {
             }
             0x0200_0000..=0x0200_FFFF => self.clint.read_u32(addr - CLINT_BASE),
             0x0C00_0000..=0x0C3F_FFFF => self.plic.read_u32(addr - PLIC_BASE),
-            0x1000_0000..=0x1000_0FFF => self.uart.read_u8(addr - UART_BASE) as u32,
+            // UART0 (Telemetry) at 0x1000_0000
+            0x1000_0000..=0x1000_0FFF => self.uart0.read_u8(addr - UART0_BASE) as u32,
+            // UART1 (GNSS) at 0x1000_1000
+            0x1000_1000..=0x1000_1FFF => self.uart1.read_u8(addr - UART1_BASE) as u32,
+            // UART2 (RC) at 0x1000_2000
+            0x1000_2000..=0x1000_2FFF => self.uart2.read_u8(addr - UART2_BASE) as u32,
             0x1001_0000..=0x1001_0FFF => self.gpio.read_u32(addr - GPIO_BASE),
             0x1002_0000..=0x1002_0FFF => self.timer.read_u32(addr - TIMER_BASE),
             0x1003_0000..=0x1003_0FFF => self.spi.read_u32(addr - SPI_BASE),
@@ -365,7 +385,12 @@ impl Bus {
             }
             0x0200_0000..=0x0200_FFFF => self.clint.write_u32(addr - CLINT_BASE, val),
             0x0C00_0000..=0x0C3F_FFFF => self.plic.write_u32(addr - PLIC_BASE, val),
-            0x1000_0000..=0x1000_0FFF => self.uart.write_u8(addr - UART_BASE, val as u8),
+            // UART0 (Telemetry) at 0x1000_0000
+            0x1000_0000..=0x1000_0FFF => self.uart0.write_u8(addr - UART0_BASE, val as u8),
+            // UART1 (GNSS) at 0x1000_1000
+            0x1000_1000..=0x1000_1FFF => self.uart1.write_u8(addr - UART1_BASE, val as u8),
+            // UART2 (RC) at 0x1000_2000
+            0x1000_2000..=0x1000_2FFF => self.uart2.write_u8(addr - UART2_BASE, val as u8),
             0x1001_0000..=0x1001_0FFF => self.gpio.write_u32(addr - GPIO_BASE, val),
             0x1002_0000..=0x1002_0FFF => self.timer.write_u32(addr - TIMER_BASE, val),
             0x1003_0000..=0x1003_0FFF => self.spi.write_u32(addr - SPI_BASE, val),
