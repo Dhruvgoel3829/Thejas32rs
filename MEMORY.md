@@ -537,7 +537,9 @@ firmware/
 | **SPI** (IMU) | `/tmp/thejas_spi.sock` | MPU-6000 register emulation | ❌ Direct access | 9002 (IMU data) | ✅ Working |
 | **GPIO** (Motors) | `/tmp/thejas_gpio.sock` | 4-byte motor forward | 4 motor forces | 9003 (motor cmds) | ✅ Working |
 | **I2C** (Sensors) | `/tmp/thejas_i2c.sock` | Baro/Compass/GPS emulation | Baro/Compass/GPS sensors | 9002 (I2C data) | ✅ Working |
-| **UART** (Telemetry) | `/tmp/thejas_uart.sock` | GPS NMEA, telemetry | GPS NMEA output | 9002 (UART data) | ✅ Working |
+| **UART0** (Telemetry) | `/tmp/thejas_uart0.sock` | GPS NMEA, telemetry | GPS NMEA output | 9002 (UART data) | ✅ Working |
+| **UART1** (GNSS) | `/tmp/thejas_uart1.sock` | GPS NMEA | GPS NMEA output | 9002 (UART data) | ✅ Working |
+| **UART2** (RC) | `/tmp/thejas_uart2.sock` | RC SBUS/CRSF | N/A | 9002 (UART data) | ✅ Working |
 | **ADC** (Analog) | `/tmp/thejas_adc.sock` | Battery/Current/RSSI | Custom sensor emulation | 9002 (ADC data) | ✅ Working |
 | **PWM** (Servos) | `/tmp/thejas_pwm.sock` | 8-channel duty/freq/phase | Motor/servo joints | 9002 (PWM data) | ✅ Working |
 
@@ -565,10 +567,10 @@ firmware/
 ## M0 Addendum (Before Starting M1)
 
 ### 1. Finish Scaffolding Verification
-- [ ] Verify Makefile builds RV32 ELF + host test target with libgcc
-- [ ] Linker: RAM LENGTH=256K, derive SP from `__stack_top` symbol
-- [ ] Build fails if static RAM (.bss + .data) + 32 KB stack > SRAM_BUDGET_BYTES (256 KB)
-- [ ] config.h, types.h, all HAL headers complete
+- [x] Verify Makefile builds RV32 ELF + host test target with libgcc
+- [x] Linker: RAM LENGTH=256K, derive SP from `__stack_top` symbol
+- [x] Build fails if static RAM (.bss + .data) + 32 KB stack > SRAM_BUDGET_BYTES (256 KB)
+- [x] config.h, types.h, all HAL headers complete
 
 ### 2. Sensor-Coverage Matrix for AUDIT.md
 Add table: what Gazebo/bridge actually simulates for each sensor:
@@ -581,17 +583,17 @@ Add table: what Gazebo/bridge actually simulates for each sensor:
 | RC Input | UART socket | N/A | N/A | SBUS/CRSF/PPM parser in firmware |
 | Battery/ADC | ADC socket | Custom analog sensor | sitl_bridge.py | Voltage, current, RSSI |
 
-### 3. Proposed Emulator Changes (Do Not Merge Until Reviewed)
-- [ ] **3+ UART instances**, each with own Unix socket (`/tmp/thejas_uart0.sock`, `uart1.sock`, `uart2.sock`)
-- [ ] **`--strict-mem` flag**: access fault on unmapped loads/stores; treat PC=0 as fault (not clean exit)
-- [ ] **I2C IPC improvements**: command-only writes; multi-byte reads (MS5611 PROM, HMC5883L data registers)
-- [ ] **Clamp synthetic ADC** to 4095 (12-bit); fix `mcycleh` at 0xB80 (keep 0xC80 as user shadow)
+### 3. Proposed Emulator Changes — **DONE (Patches 1-4)**
+- [x] **3+ UART instances**, each with own Unix socket (`/tmp/thejas_uart0.sock`, `uart1.sock`, `uart2.sock`)
+- [x] **`--strict-mem` flag**: access fault on unmapped loads/stores; treat PC=0 as fault (not clean exit)
+- [x] **I2C IPC improvements**: command-only writes; multi-byte reads (MS5611 PROM, HMC5883L data registers)
+- [x] **Clamp synthetic ADC** to 4095 (12-bit); fix `mcycleh` at 0xB80 (keep 0xC80 as user shadow)
 - [ ] **Configurable latency** for mul/div/load in cycle counter (optional)
 
-### 4. Time Base & Profiler Updates
-- [ ] `hal_time_us()` from CLINT `mtime` with `MTIME_HZ` in config.h (emulator = 100 MHz nominal)
-- [ ] Use `mtimecmp` for scheduler tick (not Timer peripheral)
-- [ ] Profiler output labeled **"instructions retired"** (not "cycles" - emulator ≈ 1:1, real HW has pipeline)
+### 4. Time Base & Profiler Updates — **DONE**
+- [x] `hal_time_us()` from CLINT `mtime` with `MTIME_HZ` in config.h (emulator = 100 MHz nominal)
+- [x] Use `mtimecmp` for scheduler tick (not Timer peripheral)
+- [x] Profiler output labeled **"instructions retired"** (not "cycles" - emulator ≈ 1:1, real HW has pipeline)
 
 ### 5. Open Item: Real Boot Flow
 - [ ] Document: XIP (execute from QSPI at 0x4000_0000) vs copy-to-RAM
@@ -600,4 +602,4 @@ Add table: what Gazebo/bridge actually simulates for each sensor:
   - Copy-to-RAM: entire image in SRAM
 
 ### 6. Emulator Version
-- [ ] Replace "emulator version" in AUDIT.md with real git commit hash from Thejas32rs repo
+- [x] Replace "emulator version" in AUDIT.md with real git commit hash from Thejas32rs repo (`daedc6c`)

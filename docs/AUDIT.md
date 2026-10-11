@@ -8,6 +8,15 @@
 
 **Stack High-Water Mark Semantics:** Implemented in `firmware/src/main.c::stack_high_water_mark()`. Stack grows DOWN from `__stack_top`. Scan runs from LOW end (`__bss_end`) upward toward `__stack_top`. Stops on first word where paint `!= 0xDEADBEEF` (i.e., first overwritten word from the deep end). Reports historical maximum stack depth (bytes from deepest overwritten address to `__stack_top`), not current SP position.
 
+**Emulator Enhancements (Patch Set 4):**
+- **3 UARTs** with independent Unix sockets (`/tmp/thejas_uart0/1/2.sock`)
+- **I2C Multi-byte Reads** — extended IPC protocol for MS5611 (3-byte) and HMC5883L (6-byte) burst reads
+- **Writable QSPI Flash** — file-backed 16 MB persistence via `--flash-file`, auto-flush on exit
+- **`--strict-mem`** — faults on unmapped memory access, PC=0 treated as fault
+- **`--test-finished-reg`** — firmware writes exit code to register, emulator exits with that code
+- **`--strict-mem` PC=0 Fault** — PC=0 treated as fault in strict mode (not clean exit)
+- **Stack High-Water Mark** — paint 0xDEADBEEF, scan from `__bss_end` to `__stack_top`, report historical max depth
+
 ---
 
 ## 1. Memory Map
@@ -15,11 +24,13 @@
 | Region | Base Address | Size | Description |
 |--------|-------------|------|-------------|
 | Unmapped | 0x0000_0000 – 0x3FFF_FFFF | 1 GB | Returns 0 on read, ignores writes |
-| QSPI Flash (XIP) | 0x4000_0000 – 0x40FF_FFFF | 16 MB | Execute-in-place, read-only, defaults to 0xFF |
-| SRAM | 0x8000_0000 – 0x8007_FFFF | **512 KB** | Main RAM, BSS zero-filled on ELF load |
+| QSPI Flash (XIP) | 0x4000_0000 – 0x40FF_FFFF | 16 MB | Execute-in-place, **writable**, file-backed persistence via `--flash-file` |
+| SRAM | 0x8000_0000 – 0x8007_FFFF | **512 KB** | Main RAM, BSS zero-filled on ELF load (firmware budget 256 KB) |
 | CLINT | 0x0200_0000 – 0x0200_FFFF | 64 KB | Core Local Interruptor (mtime, mtimecmp, msip) |
 | PLIC | 0x0C00_0000 – 0x0C3F_FFFF | 4 MB | Platform-Level Interrupt Controller (32 sources) |
-| UART | 0x1000_0000 – 0x1000_0FFF | 4 KB | 16550-style UART (THR/RHR at 0x00, LSR at 0x05) |
+| UART0 | 0x1000_0000 – 0x1000_0FFF | 4 KB | 16550-style UART (THR/RHR at 0x00, LSR at 0x05) — Telemetry console |
+| UART1 | 0x1000_1000 – 0x1000_1FFF | 4 KB | 16550-style UART — GNSS NMEA (IPC socket) |
+| UART2 | 0x1000_2000 – 0x1000_2FFF | 4 KB | 16550-style UART — RC input (SBUS/CRSF/PPM, IPC socket) |
 | GPIO | 0x1001_0000 – 0x1001_0FFF | 4 KB | Data in/out, direction, set/clear, int_en |
 | Timer | 0x1002_0000 – 0x1002_0FFF | 4 KB | Programmable timer with prescaler, auto-reload |
 | SPI | 0x1003_0000 – 0x1003_0FFF | 4 KB | SPI controller (loopback + virtual flash mock) |

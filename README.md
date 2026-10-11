@@ -21,16 +21,18 @@ A cycle-accurate **RV32IM** RISC-V SoC emulator written in Rust, implementing th
 |------------|-------------|----------|-------------|
 | **CLINT**  | `0x0200_0000` | 64 KB   | Core Local Interruptor — 64-bit `mtime` counter, `mtimecmp` compare, `msip` software interrupt |
 | **PLIC**   | `0x0C00_0000` | 4 MB    | Platform-Level Interrupt Controller — 32 sources with 8-level priorities, message-signaled mode |
-| **UART**   | `0x1000_0000` | 4 KB    | 16550-style UART with crossterm raw terminal I/O — keyboard input, stdout, Ctrl+C exit |
+| **UART0**  | `0x1000_0000` | 4 KB    | 16550-style UART — telemetry console (crossterm terminal I/O) |
+| **UART1**  | `0x1000_1000` | 4 KB    | 16550-style UART — GNSS NMEA input (IPC socket) |
+| **UART2**  | `0x1000_2000` | 4 KB    | 16550-style UART — RC input (SBUS/CRSF/PPM, IPC socket) |
 | **GPIO**   | `0x1001_0000` | 4 KB    | GPIO — data in/out registers, direction control, atomic set/clear |
 | **Timer**  | `0x1002_0000` | 4 KB    | Programmable timer — prescaler divider, auto-reload, match interrupt, enable control |
-| **SPI**    | `0x1003_0000` | 4 KB    | SPI controller — loopback mode, virtual flash mock with JEDEC ID query (`0x9F` → `0xEF`) |
+| **SPI**    | `0x1003_0000` | 4 KB    | SPI controller — IMU (MPU-6000/ICM-20602), loopback mode, virtual flash mock |
 | **I2S**    | `0x1004_0000` | 4 KB    | I²S audio interface — stereo left/right sample channels, sample counter |
-| **I2C**    | `0x1005_0000` | 4 KB    | I²C controller — virtual 24C02 EEPROM (256 bytes) at address `0x50`, start/stop/ACK support |
+| **I2C**    | `0x1005_0000` | 4 KB    | I²C controller — MS5611 baro, HMC5883L mag; extended IPC for multi-byte reads (MS5611: 3-byte, HMC5883L: 6-byte) |
 | **DMA**    | `0x1006_0000` | 4 KB    | DMA engine — up to 16 bytes/cycle, source/destination increment, interrupt on completion |
 | **WDT**    | `0x1007_0000` | 4 KB    | Watchdog Timer — configurable timeout, system reset or interrupt on expire, feed with magic keys `0x5555_AAAA` / `0x76` |
-| **QSPI**   | `0x4000_0000` | 16 MB   | Quad SPI flash window — execute-in-place (XIP), defaults to `0xFF` erased state |
-| **SRAM**   | `0x8000_0000` | 512 KB  | Main system RAM with BSS zero-fill on ELF load |
+| **QSPI**   | `0x4000_0000` | 16 MB   | Quad SPI flash window — execute-in-place (XIP), **writable**, file-backed persistence via `--flash-file` |
+| **SRAM**   | `0x8000_0000` | 512 KB  | Main system RAM with BSS zero-fill on ELF load (firmware targets 256 KB budget) |
 
 ## Memory Map
 
@@ -38,19 +40,21 @@ A cycle-accurate **RV32IM** RISC-V SoC emulator written in Rust, implementing th
 Address Range            Size        Region
 ────────────────────────────────────────────────────
 0x0000_0000 – 0x3FFF_FFFF  — Unmapped / Read-only (returns 0)
-0x4000_0000 – 0x40FF_FFFF  — QSPI Flash (16 MB XIP window)
-0x8000_0000 – 0x8007_FFFF  — SRAM (512 KB)
+0x4000_0000 – 0x40FF_FFFF  — QSPI Flash (16 MB XIP window, writable)
+0x8000_0000 – 0x8007_FFFF  — SRAM (512 KB, firmware budget 256 KB)
 ────────────────────────────────────────────────────
 0x0200_0000 – 0x0200_FFFF  — CLINT (Core Local Interruptor)
 0x0C00_0000 – 0x0C3F_FFFF  — PLIC (Platform-Level Interrupt Controller)
-0x1000_0000 – 0x1000_FFFF  — UART
-0x1001_0000 – 0x1001_FFFF  — GPIO
-0x1002_0000 – 0x1002_FFFF  — Timer
-0x1003_0000 – 0x1003_FFFF  — SPI
-0x1004_0000 – 0x1004_FFFF  — I2S
-0x1005_0000 – 0x1005_FFFF  — I2C
-0x1006_0000 – 0x1006_FFFF  — DMA
-0x1007_0000 – 0x1007_FFFF  — WDT
+0x1000_0000 – 0x1000_0FFF  — UART0 (Telemetry console)
+0x1000_1000 – 0x1000_1FFF  — UART1 (GNSS NMEA)
+0x1000_2000 – 0x1000_2FFF  — UART2 (RC input)
+0x1001_0000 – 0x1001_0FFF  — GPIO
+0x1002_0000 – 0x1002_0FFF  — Timer
+0x1003_0000 – 0x1003_0FFF  — SPI
+0x1004_0000 – 0x1004_0FFF  — I2S
+0x1005_0000 – 0x1005_0FFF  — I2C
+0x1006_0000 – 0x1006_0FFF  — DMA
+0x1007_0000 – 0x1007_0FFF  — WDT
 ```
 
 ## Installation
@@ -85,6 +89,18 @@ cargo build --release
 
 # Enable GDB debug server on TCP port 1234
 ./target/release/Thejas32rs <path-to-elf> --gdb-port 1234
+
+# Enable IPC mode (Unix sockets for external simulator/sensor bridges)
+./target/release/Thejas32rs <path-to-elf> --ipc
+
+# Persist QSPI flash to file (16 MB, survives emulator restarts)
+./target/release/Thejas32rs <path-to-elf> --flash-file /tmp/flash.bin
+
+# Strict memory mode: fault on unmapped access, PC=0 is fault
+./target/release/Thejas32rs <path-to-elf> --strict-mem
+
+# Test finished register: write sets exit code, read returns 0
+./target/release/Thejas32rs <path-to-elf> --test-finished-reg 0x1000
 ```
 
 ### CLI Options
@@ -95,6 +111,10 @@ cargo build --release
 | `--dump-regs` | `-d` | Dump all 32 GPRs and CSR state (`mstatus`, `mepc`, `mcause`) on exit/crash |
 | `--max-cycles` | `-c` | Maximum execution cycles (0 = unlimited, default: 0) |
 | `--gdb-port` | | Enable GDB server on the specified TCP port |
+| `--ipc` | | Enable IPC mode (Unix sockets for external simulator/sensor bridges) |
+| `--flash-file` | | QSPI flash backing file for persistence across runs (16 MB) |
+| `--strict-mem` | | Strict memory mode: fault on unmapped access, PC=0 is fault |
+| `--test-finished-reg` | | Test finished register address (write sets exit code, read returns 0) |
 
 ### Execution Model
 
@@ -182,9 +202,27 @@ Message-signaled interrupt controller with 32 sources and 8 priority levels.
 | 3 | DMA | DMA transfer complete |
 | 4 | WDT | Watchdog timeout |
 
-### UART — 16550-style UART (`0x1000_0000`)
+### UART0 — 16550-style UART (`0x1000_0000`) — Telemetry Console
 
 Full-duplex UART with crossterm terminal integration. Keyboard events (press only) are polled every 10 ms into the receive buffer. Control+C exits raw mode and terminates the emulator.
+
+| Offset | Register | Size | R/W | Description |
+|--------|----------|------|-----|-------------|
+| `0x00` | `THR / RHR` | 8-bit | R/W | Transmit Holding Register / Receive Buffer |
+| `0x05` | `LSR` | 8-bit | RO | Line Status: bit 0 = data ready, bits 5–6 = TX ready (`0x60`) |
+
+### UART1 — 16550-style UART (`0x1000_1000`) — GNSS NMEA Input
+
+IPC-backed UART for GNSS NMEA sentences. Connected via `/tmp/thejas_uart1.sock` when `--ipc` enabled.
+
+| Offset | Register | Size | R/W | Description |
+|--------|----------|------|-----|-------------|
+| `0x00` | `THR / RHR` | 8-bit | R/W | Transmit Holding Register / Receive Buffer |
+| `0x05` | `LSR` | 8-bit | RO | Line Status: bit 0 = data ready, bits 5–6 = TX ready (`0x60`) |
+
+### UART2 — 16550-style UART (`0x1000_2000`) — RC Input (SBUS/CRSF/PPM)
+
+IPC-backed UART for RC receiver protocols. Connected via `/tmp/thejas_uart2.sock` when `--ipc` enabled.
 
 | Offset | Register | Size | R/W | Description |
 |--------|----------|------|-----|-------------|
@@ -237,12 +275,19 @@ Programmable interval timer with prescaler and auto-reload.
 
 Virtual 24C02 EEPROM (256 bytes) at address `0x50`. Supports START condition, read/write operations, ACK/NACK status.
 
+**Extended IPC Protocol for External Sensors (MS5611, HMC5883L):**
+
+- **Write**: `[0x00, addr, reg?, data...]` — command-only writes supported (reg optional if latched)
+- **Read**: `[0x01, addr, reg?, num_bytes]` → returns `num_bytes` of data
+- **MS5611 Barometer (0x77)**: 3-byte ADC reads (pressure/temperature)
+- **HMC5883L Compass (0x1E)**: 6-byte burst reads (X/Z/Y MSB/LSB)
+
 | Offset | Register | Size | R/W | Description |
 |--------|----------|------|-----|-------------|
 | `0x00` | `cr` | 32-bit | R/W | bit 2: START, bit 3: read direction |
 | `0x04` | `sr` | 32-bit | R/W | bit 2: ACK, bit 1: RX ready |
 | `0x08` | `addr` | 32-bit | R/W | 7-bit device address |
-| `0x0C` | `data` | 32-bit | R/W | Data register |
+| `0x0C` | `data` | 32-bit | R/W | Data register (reads from 16-byte RX buffer for multi-byte) |
 
 ### DMA (`0x1006_0000`)
 
@@ -270,7 +315,7 @@ If `ctrl` bit 0 is set, `count` decrements each cycle. On timeout: if `ctrl` bit
 
 ### QSPI Flash (`0x4000_0000`)
 
-16 MB flash window. Defaults to `0xFF` (erased). Sections from loaded ELF files are written via `load_bytes`. Write operations are ignored (read-only window).
+16 MB flash window. Defaults to `0xFF` (erased). Sections from loaded ELF files are written via `load_bytes`. **Writable** for byte/word programming via MMIO. **File-backed persistence** via `--flash-file` option: loads existing 16 MB image on startup, auto-saves on exit (or `flush()`), creates new file if missing. Supports byte programming (`write_u8`), word programming (`write_bytes`), sector erase (`erase_sector`), range erase (`erase_range`). Dirty tracking for efficient writes. Auto-flushes on emulator exit (Drop impl).
 
 ## CSR Reference
 
@@ -427,5 +472,15 @@ Built by [Dhruv Goel](https://github.com/dhruvgoel3829) — part of the [Thejas3
 - **Scheduler** — interrupt-aware instruction scheduling
 - **PMP** — physical memory protection (16 entries)
 - **WDT** — hardware watchdog timer with reset capability
-- **QSPI** — 16 MB flash execute-in-place window
+- **QSPI** — 16 MB flash execute-in-place window, writable, file-backed persistence
 - **Tests** — test suite
+
+### New Features (Patch Set 4)
+
+- **3 UARTs** with independent Unix sockets (`/tmp/thejas_uart0/1/2.sock`) — enables independent GNSS/RC UART validation
+- **I2C Multi-byte Reads** — extended IPC protocol for MS5611 (3-byte) and HMC5883L (6-byte) burst reads
+- **Writable QSPI Flash** — file-backed 16 MB persistence via `--flash-file`, auto-flush on exit
+- **`--strict-mem`** — faults on unmapped memory access, PC=0 treated as fault
+- **`--test-finished-reg`** — firmware writes exit code to register, emulator exits with that code
+- **`--strict-mem` PC=0 Fault** — PC=0 treated as fault in strict mode (not clean exit)
+- **Stack High-Water Mark** — paint 0xDEADBEEF, scan from `__bss_end` to `__stack_top`, report historical max depth

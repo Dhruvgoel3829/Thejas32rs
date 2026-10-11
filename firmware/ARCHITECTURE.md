@@ -1,8 +1,8 @@
 # VEGA Pilot Firmware - Architecture & Implementation Guide
 
-**Status:** Milestone 0 Complete (Audit & Scaffolding)  
+**Status:** Milestone 0 Complete, Patches 1-4 Complete  
 **Target:** THEJAS32 / VEGA ET1031 (RV32IM, no FPU) on ARIES v3 board  
-**Emulator:** Thejas32rs (Rust, cycle-accurate RV32IMAC+A)
+**Emulator:** Thejas32rs (Rust, cycle-accurate RV32IMAC+A) — commit `daedc6c`
 
 ---
 
@@ -287,23 +287,23 @@ make clean       # Remove build/
 
 ### Milestone 1: Scheduler, Time, Profiling
 
-#### M1 Design Decisions (Pre-Implementation)
+#### M1 Design Decisions — **Patches 1-4 COMPLETE**
 
-**Emulator Patches Required First (Prerequisites for Task Validation):**
-*These must land in the emulator before the corresponding firmware tasks can be fully validated.*
+**Emulator Patches (Patches 1-4 — DONE):**
+*These patches have been implemented and merged. Firmware tasks can now be validated.*
 
-| Priority | Emulator Patch | Why Required | Firmware Impact |
-|----------|----------------|--------------|-----------------|
-| 1 | **3 UART instances** with separate Unix sockets (`/tmp/thejas_uart0.sock`, `uart1.sock`, `uart2.sock`) | GNSS and RC tasks currently share one UART socket; cannot validate independent drain/parsing | Enables independent `task_gnss_uart` (UART1) and `task_rc_uart` (UART2) validation |
-| 2 | **I2C IPC protocol: command-only writes + multi-byte burst reads** | MS5611 needs 3-byte ADC read; HMC5883L needs 6-byte burst read. Current IPC only supports single-byte reads. | Enables `task_baro` (MS5611 convert+read-3) and `task_mag` (HMC5883L read-6) |
-| 3 | **Writable file-backed QSPI flash** (persist across runs) | M3 parameter persistence test requires flash write/erase | Enables M3 `PARAM_VALUE` persistence, logger flash writes |
-| 4 | **`--strict-mem` flag**: access fault on unmapped loads/stores; PC=0 = fault (not clean exit) | Catches null-pointer derefs and OOB accesses in firmware | Hardens firmware against memory errors |
-| 5 | **Test-finished register** that sets emulator exit code | Enables automated CI testing without manual cycle limits | Clean `make emu-test` integration |
-| 6 | **Baud-accurate UART TX model** (simulate bit timing) | Validates firmware UART timing assumptions | Improves UART driver fidelity |
-| 7 | **ADC clamp to 4095** (12-bit) | Synthetic ADC values currently unbounded | Prevents firmware ADC overflow |
-| 8 | **`mcycleh` at 0xB80** (keep 0xC80 as user shadow) | Matches RISC-V privileged spec | Corrects CSR mapping |
+| Priority | Emulator Patch | Status | Firmware Impact |
+|----------|----------------|--------|-----------------|
+| 1 | **3 UART instances** with separate Unix sockets (`/tmp/thejas_uart0/1/2.sock`) | ✅ Done | Enables independent `task_gnss_uart` (UART1) and `task_rc_uart` (UART2) validation |
+| 2 | **I2C IPC protocol: command-only writes + multi-byte burst reads** (MS5611 read-3, HMC5883L read-6) | ✅ Done | Enables `task_baro` (MS5611 convert+read-3) and `task_mag` (HMC5883L read-6) |
+| 3 | **Writable file-backed QSPI flash** (persist across runs) | ✅ Done | Enables M3 `PARAM_VALUE` persistence, logger flash writes |
+| 4 | **`--strict-mem` flag**: access fault on unmapped loads/stores; PC=0 = fault (not clean exit) | ✅ Done | Hardens firmware against memory errors |
+| 5 | **Test-finished register** that sets emulator exit code | ✅ Done | Clean `make emu-test` integration |
+| 6 | **Baud-accurate UART TX model** (simulate bit timing) | Pending | Improves UART driver fidelity |
+| 7 | **ADC clamp to 4095** (12-bit) | Pending | Prevents firmware ADC overflow |
+| 8 | **`mcycleh` at 0xB80** (keep 0xC80 as user shadow) | Pending | Corrects CSR mapping |
 
-*Current `hal_emu/i2c.c` was written against the OLD protocol (single-byte reads only). Must be updated after patch 2 lands.*
+*Current `hal_emu/i2c.c` has been updated for the NEW protocol (multi-byte reads).*
 
 **Firmware Task Splitting (from single 1kHz "state estimate"):**
 | Task | Rate | Period | Purpose |
