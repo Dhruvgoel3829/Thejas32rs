@@ -34,6 +34,7 @@ HOST_BUILD_DIR := $(BUILD_DIR)/host
 
 # Linker flags
 LIBGCC := /opt/riscv/bin/../lib/gcc/riscv-none-elf/15.2.0/libgcc.a
+LIBM := $(shell $(RV_CC) -print-file-name=libm.a)
 RV_LDFLAGS  := -Wl,--gc-sections -Wl,-Map=$(RV_BUILD_DIR)/firmware.map -T link.ld
 HOST_LDFLAGS := -Wl,--gc-sections
 
@@ -76,8 +77,11 @@ HOST_ELF := $(HOST_BUILD_DIR)/test_runner
 # Test program targets
 TEST_PROGRAMS := uart_isolation_test strict_mem_test qspi_persistence_test i2c_sensor_test
 
+# Cycle budget benchmarks (linked with libm for sqrtf/sinf/cosf/atan2f)
+BENCH_PROGRAMS := cycle_bench
+
 # Default target
-all: rv32 host-test test-programs
+all: rv32 host-test test-programs bench
 
 # Test programs (exclude main.c to avoid duplicate main)
 TEST_OBJS := $(filter-out $(RV_BUILD_DIR)/src/main.o,$(RV_OBJS))
@@ -88,6 +92,14 @@ test-programs: $(addprefix $(RV_BUILD_DIR)/,$(addsuffix .elf,$(TEST_PROGRAMS)))
 $(RV_BUILD_DIR)/%.elf: programs/%.c link.ld crt0.s $(TEST_OBJS) | $(RV_BUILD_DIR)
 	$(RV_CC) $(RV_CFLAGS) $(RV_LDFLAGS) crt0.s $< $(TEST_OBJS) $(LIBGCC) -o $@
 	@echo "=== Test Program: $* ==="
+	@$(RV_SIZE) $@
+
+# Benchmark programs (linked with libm)
+bench: $(addprefix $(RV_BUILD_DIR)/,$(addsuffix .elf,$(BENCH_PROGRAMS)))
+
+$(RV_BUILD_DIR)/cycle_bench.elf: programs/cycle_bench.c link.ld crt0.s $(TEST_OBJS) | $(RV_BUILD_DIR)
+	$(RV_CC) $(RV_CFLAGS) $(RV_LDFLAGS) crt0.s $< $(TEST_OBJS) -Wl,--start-group $(LIBGCC) $(LIBM) -Wl,--end-group -o $@
+	@echo "=== Benchmark Program: cycle_bench ==="
 	@$(RV_SIZE) $@
 
 # RV32 target
@@ -123,9 +135,36 @@ test: host-test
 	@$(HOST_ELF)
 
 # Emulator integration test
-emu-test: rv32
-	@echo "=== Running Emulator Test ==="
-	@./target/release/Thejas32rs $(RV_ELF) --max-cycles 1000000
+# --strict-mem: fault on unmapped access, PC=0 is fault (not clean exit)
+# --test-finished-reg 4096 (0x1000): absolute byte ADDRESS in emulator space.
+#   0x1000 is unmapped low memory the firmware never touches normally, so a
+#   write there can only come from an explicit test write. Checked FIRST in
+#   bus write paths, so it never trips --strict-mem. Firmware writes the
+#   desired exit code (low byte); emulator exits with that code.
+# Fails on: non-zero exit code, or "OVERRUNS DETECTED" in UART output.
+EMU := ../target/release/Thejas32rs
+EMU_SMOKE_CYCLES := 200000000
+EMU_TEST_OUT := $(RV_BUILD_DIR)/emu-test.log
+
+emu-test: rv32 test-programs
+	@echo "=== Emulator Smoke Test (strict-mem, ~2 firmware-sec) ==="
+	@$(EMU) $(RV_ELF) --max-cycles $(EMU_SMOKE_CYCLES) --strict-mem --test-finished-reg 4096 > $(EMU_TEST_OUT) 2>&1; \
+	EC=$$?; \
+	if [ $$EC -ne 0 ]; then echo "FAIL: firmware smoke exited $$EC"; tail -5 $(EMU_TEST_OUT); exit 1; fi; \
+	if grep -q "OVERRUNS DETECTED" $(EMU_TEST_OUT); then echo "FAIL: task overruns detected"; grep "OVERRUNS" $(EMU_TEST_OUT); exit 1; fi; \
+	echo "PASS: firmware smoke (exit 0, no overruns)"
+	@echo "=== Strict-Mem Negative Test (NULL deref must fault) ==="
+	@$(EMU) $(RV_BUILD_DIR)/strict_mem_test.elf --max-cycles 1000000 --strict-mem > $(RV_BUILD_DIR)/strict-mem.log 2>&1; \
+	EC=$$?; \
+	if [ $$EC -eq 0 ]; then echo "FAIL: strict-mem test exited 0, expected fault"; exit 1; fi; \
+	echo "PASS: strict-mem faulted as expected (exit $$EC)"
+	@echo "=== QSPI Persistence Test ==="
+	@rm -f $(RV_BUILD_DIR)/emu-flash.bin
+	@$(EMU) $(RV_BUILD_DIR)/qspi_persistence_test.elf --max-cycles 1000000 --flash-file $(RV_BUILD_DIR)/emu-flash.bin > /dev/null 2>&1; \
+	EC=$$?; \
+	if [ $$EC -ne 0 ]; then echo "FAIL: qspi test pass 1 exited $$EC"; exit 1; fi; \
+	[ -f $(RV_BUILD_DIR)/emu-flash.bin ] || (echo "FAIL: no flash file written"; exit 1); \
+	echo "PASS: qspi persistence (16MB file written)"
 
 # Check RAM usage from map file
 check-ram: rv32

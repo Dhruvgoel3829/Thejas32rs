@@ -2,7 +2,7 @@
 
 **Status:** Milestone 0 Complete, Patches 1-4 Complete  
 **Target:** THEJAS32 / VEGA ET1031 (RV32IM, no FPU) on ARIES v3 board  
-**Emulator:** Thejas32rs (Rust, cycle-accurate RV32IMAC+A) — commit `daedc6c`
+**Emulator:** Thejas32rs (Rust instruction-set simulator, RV32IMAC+A)
 
 ---
 
@@ -328,7 +328,7 @@ make clean       # Remove build/
 - Emulator: `MTIME_HZ = 100000000` (100 MHz nominal)
 - Real hardware: set per datasheet (typically 32.768 kHz or 1 MHz)
 - Use `mtimecmp` for scheduler tick (not Timer peripheral)
-- Profiler output labeled **"instructions retired"** (emulator ≈ 1:1; real HW has pipeline)
+- Profiler output labeled **"instructions retired"** (emulator retires ~1 instruction per tick; real HW has pipeline stalls/cache effects — apply a 1.5-2x margin as an **UNMEASURED ASSUMPTION** until remeasured on hardware)
 
 **Flash/Logger:**
 - Erase and program as **chunked yielding state machines** (cooperative, no blocking)

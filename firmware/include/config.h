@@ -87,6 +87,12 @@
 /* Control stub defaults (placeholder) */
 #define CTRL_STUB_MAX_THROTTLE   1000
 
+/* QSPI flash geometry + timing (must match emulator src/qspi.rs) */
+#define QSPI_SECTOR_SIZE          4096    /* 4 KB erase sectors */
+#define QSPI_PAGE_SIZE            256     /* 256 B program pages */
+#define QSPI_PAGE_PROGRAM_US      500     /* ~0.5 ms @ 100 MHz (emulator: 50k cycles) */
+#define QSPI_SECTOR_ERASE_MS      200     /* ~200 ms @ 100 MHz (emulator: 20M cycles) */
+
 /* MAVLink */
 #define MAVLINK_SYSID           1
 #define MAVLINK_COMPID          1

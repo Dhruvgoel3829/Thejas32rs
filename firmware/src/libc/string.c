@@ -7,6 +7,9 @@
 #include <stddef.h>
 #include <stdarg.h>
 
+/* errno stub for libm (freestanding has no libc errno) */
+int __errno;
+
 void *memcpy(void *dest, const void *src, size_t n) {
     uint8_t *d = (uint8_t *)dest;
     const uint8_t *s = (const uint8_t *)src;
@@ -124,7 +127,9 @@ int snprintf(char *str, size_t size, const char *format, ...) {
     return ret;
 }
 
-/* Minimal vsnprintf implementation - supports %d, %u, %x, %s, %c */
+/* Minimal vsnprintf implementation - supports %d, %u, %x, %s, %c,
+ * plus 'l' length modifier (%lu, %ld, %lx). On RV32ILP32 long is 32-bit,
+ * so %lu==%u, %ld==%d, %lx==%x. */
 int vsnprintf(char *str, size_t size, const char *format, va_list args) {
     char *out = str;
     size_t remaining = size;
@@ -134,6 +139,9 @@ int vsnprintf(char *str, size_t size, const char *format, va_list args) {
     while (*format && remaining > 1) {
         if (*format == '%') {
             format++;
+            if (*format == 'l') {
+                format++;  /* consume 'l': long is 32-bit here, same as int */
+            }
             if (*format == 'd') {
                 int val = va_arg(args, int);
                 char buf[16];

@@ -41,6 +41,7 @@ pub struct Uart {
     rx_receiver: Receiver<u8>,
     rx_buffer: Option<u8>,
     ipc: Option<SocketBackend>,
+    console: bool,
     baud_rate: u32,
     dll: u8,  // Divisor Latch Low
     dlm: u8,  // Divisor Latch High
@@ -96,7 +97,13 @@ impl Uart {
             lcr: 0x03,  // 8 data bits, 1 stop bit, no parity
             tx_busy_cycles: 0,
             tx_byte: None,
+            console: false,
         }
+    }
+
+    /// Mark this UART as the console (UART0): TX bytes mirror to stdout.
+    pub fn set_console(&mut self, console: bool) {
+        self.console = console;
     }
 
     fn divisor(&self) -> u16 {
@@ -170,8 +177,9 @@ impl Uart {
                 self.tx_byte = Some(val);
                 self.tx_busy_cycles = self.byte_time_cycles();
                 
-                // Local terminal output only for UART0 (console)
-                if self.ipc.is_some() {
+                // Console UART (UART0) mirrors TX to stdout so firmware
+                // printfs are visible with or without --ipc
+                if self.console {
                     let stdout = io::stdout();
                     let mut handle = stdout.lock();
                     let _ = handle.write_all(&[val]);

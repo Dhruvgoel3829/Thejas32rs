@@ -3,7 +3,7 @@
 [![Rust](https://img.shields.io/badge/language-Rust-orange)](https://www.rust-lang.org)
 [![Edition](https://img.shields.io/badge/rustc-edition2024-blue)](https://doc.rust-lang.org/edition2024/edition2024-rustdoc/)
 
-A cycle-accurate **RV32IM** RISC-V SoC emulator written in Rust, implementing the custom **THEJAS32** processor with a rich set of on-chip peripherals and a GDB stub for hardware debugging.
+An instruction-set simulator for **RV32IM** RISC-V, written in Rust, implementing the custom **THEJAS32** processor with a rich set of on-chip peripherals and a GDB stub for hardware debugging.
 
 ## Features
 

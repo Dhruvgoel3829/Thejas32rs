@@ -42,11 +42,12 @@ pub struct Bus {
 
 impl Bus {
     pub fn new(enable_ipc: bool, flash_file: Option<String>, strict_mem: bool, test_finished_reg: Option<u32>) -> Self {
-        let ipc = enable_ipc;
+        let mut uart0 = Uart::new(if enable_ipc { Some("/tmp/thejas_uart0.sock") } else { None });
+        uart0.set_console(true);
         Self {
             ram: vec![0; RAM_SIZE],
             flash: QspiFlash::with_backing_file(flash_file),
-            uart0: Uart::new(if enable_ipc { Some("/tmp/thejas_uart0.sock") } else { None }),
+            uart0,
             uart1: Uart::new(if enable_ipc { Some("/tmp/thejas_uart1.sock") } else { None }),
             uart2: Uart::new(if enable_ipc { Some("/tmp/thejas_uart2.sock") } else { None }),
             clint: Clint::new(),
@@ -362,8 +363,17 @@ impl Bus {
     }
 
     pub fn write_u16(&mut self, addr: u32, val: u16) {
+        // Check for test-finished register write (low byte = exit code)
+        if let Some(reg) = self.test_finished_reg {
+            if addr == reg {
+                std::process::exit((val & 0xFF) as i32);
+            }
+        }
         match addr {
-            0x4000_0000..=0x40FF_FFFF => {} // Read-only
+            0x4000_0000..=0x40FF_FFFF => {
+                let bytes = val.to_le_bytes();
+                self.flash.write_bytes(addr - FLASH_BASE, &bytes);
+            }
             0x8000_0000..=0x8007_FFFF => {
                 let offset = (addr - RAM_BASE) as usize;
                 let bytes = val.to_le_bytes();
@@ -405,11 +415,23 @@ impl Bus {
             0x1009_0000..=0x1009_0FFF => self.pwm.read_u32(addr - PWM_BASE),
             0x1006_0000..=0x1006_0FFF => self.dma.read_u32(addr - DMA_BASE),
             0x1007_0000..=0x1007_0FFF => self.wdt.read_u32(addr - WDT_BASE),
-            _ => 0,
+            _ => {
+                // Strict memory mode: fault on unmapped access
+                if self.strict_mem {
+                    panic!("Strict memory mode: read from unmapped address 0x{:08x}", addr);
+                }
+                0
+            },
         }
     }
 
     pub fn write_u32(&mut self, addr: u32, val: u32) {
+        // Check for test-finished register write (low byte = exit code)
+        if let Some(reg) = self.test_finished_reg {
+            if addr == reg {
+                std::process::exit((val & 0xFF) as i32);
+            }
+        }
         match addr {
             // Flash (QSPI) - writable for word programming
             0x4000_0000..=0x40FF_FFFF => {
@@ -438,7 +460,12 @@ impl Bus {
             0x1009_0000..=0x1009_0FFF => self.pwm.write_u32(addr - PWM_BASE, val),
             0x1006_0000..=0x1006_0FFF => self.dma.write_u32(addr - DMA_BASE, val),
             0x1007_0000..=0x1007_0FFF => self.wdt.write_u32(addr - WDT_BASE, val),
-            _ => {}
+            _ => {
+                // Strict memory mode: fault on unmapped access
+                if self.strict_mem {
+                    panic!("Strict memory mode: write to unmapped address 0x{:08x}", addr);
+                }
+            }
         }
     }
 }

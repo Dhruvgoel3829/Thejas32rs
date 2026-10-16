@@ -4,10 +4,21 @@ use std::path::Path;
 pub const FLASH_BASE: u32 = 0x4000_0000;
 pub const FLASH_SIZE: usize = 16 * 1024 * 1024; // 16 MB Flash Window
 
+/// NOR flash geometry (matches typical SPI NOR, e.g. Winbond W25Q series)
+pub const FLASH_SECTOR_SIZE: u32 = 4096; // 4 KB erase sectors
+pub const FLASH_PAGE_SIZE: u32 = 256; // 256 B program pages
+
+/// Busy durations in emulator cycles (nominal MTIME_HZ = 100 MHz).
+/// Paired with firmware constants QSPI_PAGE_PROGRAM_US / QSPI_SECTOR_ERASE_MS
+/// in firmware/include/config.h — keep both sides in sync.
+pub const FLASH_PAGE_PROGRAM_CYCLES: u64 = 50_000; // ~0.5 ms @ 100 MHz
+pub const FLASH_SECTOR_ERASE_CYCLES: u64 = 20_000_000; // ~200 ms @ 100 MHz
+
 pub struct QspiFlash {
     pub data: Vec<u8>,
     backing_file: Option<String>,
     dirty: bool,
+    busy_cycles: u64,
 }
 
 impl QspiFlash {
@@ -42,7 +53,7 @@ impl QspiFlash {
             }
         }
 
-        Self { data, backing_file, dirty }
+        Self { data, backing_file, dirty, busy_cycles: 0 }
     }
 
     #[inline(always)]
@@ -71,39 +82,67 @@ impl QspiFlash {
         b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
     }
 
-    /// Write a single byte to flash (for byte-programming emulation)
+    /// Write a single byte to flash (NOR page program: only clears bits).
+    /// Writes issued while busy are ignored (real hardware constraint).
     pub fn write_u8(&mut self, offset: u32, val: u8) {
+        if self.busy_cycles > 0 {
+            return;
+        }
         let idx = offset as usize;
         if idx < self.data.len() {
-            self.data[idx] = val;
+            self.data[idx] &= val;
             self.dirty = true;
+            self.busy_cycles = FLASH_PAGE_PROGRAM_CYCLES;
         }
     }
 
-    /// Write multiple bytes to flash
+    /// Write multiple bytes to flash (NOR page program).
+    /// Programs do not cross 256 B page boundaries: bytes past the end
+    /// of the starting page wrap to the start of the SAME page
+    /// (real NOR behavior for cross-page programs).
     pub fn write_bytes(&mut self, offset: u32, bytes: &[u8]) {
-        let start = offset as usize;
-        let end = (start + bytes.len()).min(self.data.len());
-        if start < self.data.len() {
-            self.data[start..end].copy_from_slice(&bytes[0..(end - start)]);
+        if self.busy_cycles > 0 {
+            return;
+        }
+        let page_base = offset & !(FLASH_PAGE_SIZE - 1);
+        let mut programmed = false;
+        for (i, &b) in bytes.iter().enumerate() {
+            let page_off = ((offset - page_base) + i as u32) % FLASH_PAGE_SIZE;
+            let idx = (page_base + page_off) as usize;
+            if idx < self.data.len() {
+                self.data[idx] &= b;
+                programmed = true;
+            }
+        }
+        if programmed {
             self.dirty = true;
+            self.busy_cycles = FLASH_PAGE_PROGRAM_CYCLES;
         }
     }
 
-    /// Erase a sector (set to 0xFF)
-    pub fn erase_sector(&mut self, sector: u32, sector_size: u32) {
-        let start = (sector * sector_size) as usize;
-        let end = ((sector + 1) * sector_size).min(self.data.len() as u32) as usize;
+    /// Erase one fixed 4 KB sector (sets all bytes to 0xFF).
+    pub fn erase_sector(&mut self, sector: u32) {
+        if self.busy_cycles > 0 {
+            return;
+        }
+        let start = (sector * FLASH_SECTOR_SIZE) as usize;
+        let end = (start + FLASH_SECTOR_SIZE as usize).min(self.data.len());
         if start < self.data.len() {
             for i in start..end {
                 self.data[i] = 0xFF;
             }
             self.dirty = true;
+            self.busy_cycles = FLASH_SECTOR_ERASE_CYCLES;
         }
     }
 
-    /// Erase a range of bytes
+    /// Erase a range of bytes (sets to 0xFF).
+    /// Real NOR erases whole overlapped 4 KB sectors; busy time scales
+    /// with the number of touched sectors (conservative).
     pub fn erase_range(&mut self, offset: u32, len: u32) {
+        if self.busy_cycles > 0 {
+            return;
+        }
         let start = offset as usize;
         let end = (start + len as usize).min(self.data.len());
         if start < self.data.len() {
@@ -111,6 +150,8 @@ impl QspiFlash {
                 self.data[i] = 0xFF;
             }
             self.dirty = true;
+            let sectors = ((len + FLASH_SECTOR_SIZE - 1) / FLASH_SECTOR_SIZE).max(1) as u64;
+            self.busy_cycles = sectors * FLASH_SECTOR_ERASE_CYCLES;
         }
     }
 
@@ -145,10 +186,107 @@ impl QspiFlash {
     pub fn set_backing_file(&mut self, path: Option<String>) {
         self.backing_file = path;
     }
+
+    /// Advance the internal busy counter by one emulator cycle.
+    pub fn tick(&mut self) {
+        if self.busy_cycles > 0 {
+            self.busy_cycles -= 1;
+        }
+    }
+
+    /// True while an erase or program operation is still busy.
+    pub fn is_busy(&self) -> bool {
+        self.busy_cycles > 0
+    }
 }
 
 impl Drop for QspiFlash {
     fn drop(&mut self) {
         let _ = self.flush();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_program_clears_bits_only() {
+        let mut f = QspiFlash::new();
+        // Fresh flash is erased (0xFF)
+        assert_eq!(f.read_u8(0), 0xFF);
+        // Program clears bits: 0xFF & 0x0F = 0x0F
+        f.write_u8(0, 0x0F);
+        // Tick past program busy so the next op is accepted
+        for _ in 0..FLASH_PAGE_PROGRAM_CYCLES {
+            f.tick();
+        }
+        assert_eq!(f.read_u8(0), 0x0F);
+        // Programming 1s over 0s does nothing: 0x0F & 0xF0 = 0x00, then & 0xFF stays 0x00
+        f.write_u8(0, 0xF0);
+        for _ in 0..FLASH_PAGE_PROGRAM_CYCLES {
+            f.tick();
+        }
+        assert_eq!(f.read_u8(0), 0x00);
+        f.write_u8(0, 0xFF);
+        for _ in 0..FLASH_PAGE_PROGRAM_CYCLES {
+            f.tick();
+        }
+        assert_eq!(f.read_u8(0), 0x00); // bits stay cleared without erase
+        // Erase restores 0xFF
+        f.erase_sector(0);
+        for _ in 0..FLASH_SECTOR_ERASE_CYCLES {
+            f.tick();
+        }
+        assert_eq!(f.read_u8(0), 0xFF);
+    }
+
+    #[test]
+    fn test_writes_ignored_while_busy() {
+        let mut f = QspiFlash::new();
+        f.write_u8(0, 0x00);
+        assert!(f.is_busy());
+        // Second write while busy is dropped
+        f.write_u8(1, 0x00);
+        for _ in 0..FLASH_PAGE_PROGRAM_CYCLES {
+            f.tick();
+        }
+        assert!(!f.is_busy());
+        assert_eq!(f.read_u8(0), 0x00);
+        assert_eq!(f.read_u8(1), 0xFF); // dropped write left erased value
+    }
+
+    #[test]
+    fn test_page_boundary_wrap() {
+        let mut f = QspiFlash::new();
+        // Write 4 bytes straddling a 256 B page boundary (0xFF..0x102):
+        // bytes at 0xFF, then wrap to 0x00, 0x01, 0x02 of the same page
+        f.write_bytes(0xFF, &[0xAA, 0xBB, 0xCC, 0xDD]);
+        for _ in 0..FLASH_PAGE_PROGRAM_CYCLES {
+            f.tick();
+        }
+        assert_eq!(f.read_u8(0xFF), 0xAA);
+        assert_eq!(f.read_u8(0x00), 0xBB); // wrapped, did not touch 0x100
+        assert_eq!(f.read_u8(0x01), 0xCC);
+        assert_eq!(f.read_u8(0x02), 0xDD);
+        assert_eq!(f.read_u8(0x100), 0xFF);
+    }
+
+    #[test]
+    fn test_erase_sector_fixed_4k() {
+        let mut f = QspiFlash::new();
+        f.write_u8(0x1000, 0x00);
+        for _ in 0..FLASH_PAGE_PROGRAM_CYCLES {
+            f.tick();
+        }
+        assert_eq!(f.read_u8(0x1000), 0x00);
+        f.erase_sector(1); // sector 1 = 0x1000..0x1FFF
+        for _ in 0..FLASH_SECTOR_ERASE_CYCLES {
+            f.tick();
+        }
+        assert_eq!(f.read_u8(0x1000), 0xFF);
+        assert_eq!(f.read_u8(0x1FFF), 0xFF);
+        // Adjacent sector untouched (still erased default)
+        assert_eq!(f.read_u8(0x2000), 0xFF);
     }
 }

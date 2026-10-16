@@ -182,6 +182,9 @@ impl Cpu {
         self.bus.uart1.tick();
         self.bus.uart2.tick();
 
+        // Tick QSPI flash busy counter (erase/program timing)
+        self.bus.flash.tick();
+
         // 1. Tick hardware timers and cycle counter
         self.bus.clint.tick();
         self.csr.cycle = self.csr.cycle.wrapping_add(1);

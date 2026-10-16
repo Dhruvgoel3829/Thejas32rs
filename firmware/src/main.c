@@ -17,6 +17,7 @@
 #include "sched.h"
 #include "state.h"
 #include "ctrl_stub.h"
+#include <stdio.h>
 
 /* Task function prototypes */
 static void task_control(void *arg);
@@ -189,6 +190,25 @@ static void task_logger(void *arg) {
     /* Report stack high-water mark */
     uint32_t hwm = stack_high_water_mark();
     g_vehicle_state.stack_hwm_bytes = hwm;
+
+    /* Overrun report for `make emu-test` (fails on "OVERRUNS DETECTED").
+     * Prints once at startup (HWM), then only when the overrun count grows. */
+    static uint32_t last_overruns = 0;
+    static uint32_t report_count = 0;
+    uint32_t total_overruns = 0;
+    for (uint8_t i = 0; i < g_task_count; i++) {
+        total_overruns += g_tasks[i].overruns;
+    }
+    if (report_count == 0 || total_overruns != last_overruns) {
+        char buf[96];
+        int len = snprintf(buf, sizeof(buf),
+            "STACK HWM: %lu bytes free, TASK OVERRUNS: %lu%s\n",
+            (unsigned long)hwm, (unsigned long)total_overruns,
+            total_overruns > 0 ? " OVERRUNS DETECTED" : "");
+        hal_uart_write_nb(UART_ID_TELEM, (uint8_t *)buf, (uint16_t)len);
+        last_overruns = total_overruns;
+    }
+    report_count++;
 }
 
 /* Stack high-water mark scan

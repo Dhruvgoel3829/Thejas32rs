@@ -71,13 +71,20 @@
 - 3: DMA (transfer complete)
 - 4: WDT (timeout)
 
-### UART (0x1000_0000)
+### UART0/UART1/UART2 (0x1000_0000 / 0x1000_1000 / 0x1000_2000)
+Three independent 16550-style instances with identical register layouts:
+UART0 = telemetry console, UART1 = GNSS NMEA, UART2 = RC input.
+
 | Offset | Register | Size | R/W | Description |
 |--------|----------|------|-----|-------------|
-| 0x00 | THR/RHR | 8-bit | R/W | Transmit Holding / Receive Buffer |
-| 0x05 | LSR | 8-bit | R | Line Status: bit 0 = RX ready, bits 5–6 = TX ready (0x60) |
+| 0x00 | THR/RHR | 8-bit | R/W | Transmit Holding / Receive Buffer (also DLL when LCR.DLAB=1) |
+| 0x01 | IER/DLM | 8-bit | R/W | Interrupt Enable / Divisor Latch High (DLM when DLAB=1) |
+| 0x03 | LCR | 8-bit | R/W | Line Control (bit 7 = DLAB) |
+| 0x05 | LSR | 8-bit | R | Line Status: bit 0 = RX ready; bits 5–6 = TX ready. **Baud-accurate:** after a TX write, THRE/TEMT deassert for ~10 bits × MTIME_HZ/baud cycles per byte, so ring-buffer backpressure is testable. |
 
-**IPC:** When `--ipc` enabled, connects to `/tmp/thejas_uart.sock`. TX bytes forwarded; RX bytes received from socket.
+**IPC:** When `--ipc` enabled, UART0/UART1/UART2 connect to
+`/tmp/thejas_uart0.sock`, `/tmp/thejas_uart1.sock`, `/tmp/thejas_uart2.sock`
+respectively. UART0 TX also mirrors to emulator stdout (console).
 
 ### GPIO (0x1001_0000)
 | Offset | Register | Size | R/W | Description |
@@ -128,9 +135,12 @@
 
 **Virtual EEPROM:** 256 bytes at address 0x50. First write after START sets internal pointer; subsequent writes write data with auto-increment. Reads return data at pointer with auto-increment.
 
-**IPC Protocol (`/tmp/thejas_i2c.sock`):**
-- Write: `[0x00, addr, reg, data]`
-- Read: `[0x01, addr, reg]` → response: `[data]`
+**IPC Protocol (`/tmp/thejas_i2c.sock`), extended for multi-byte reads:**
+- Write: `[0x00, addr, reg?, data...]` — register optional if latched (command-only writes, e.g. MS5611 convert commands)
+- Read: `[0x01, addr, reg?, num_bytes]` → response: `num_bytes` of data (up to 16)
+- MS5611 (0x77): 3-byte ADC reads; HMC5883L (0x1E): 6-byte burst reads
+  (X MSB/LSB, Z MSB/LSB, Y MSB/LSB). Single-byte reads still work
+  (backward compatible).
 
 ### ADC (0x1008_0000)
 | Offset | Register | Size | R/W | Description |
@@ -179,12 +189,12 @@ All IPC uses Unix domain sockets (`SOCK_STREAM`) at paths under `/tmp/thejas_*.s
 **From Emulator → Bridge:** 4 bytes LE `u32` = `data_out` value (sent on every write to data_out, set, clear).
 
 ### I2C (`/tmp/thejas_i2c.sock`)
-**From Emulator → Bridge:**
-- Write: `[0x00, addr, reg, data]`
-- Read request: `[0x01, addr, reg]` → Bridge replies `[data]`
+**From Emulator → Bridge (extended protocol):**
+- Write: `[0x00, addr, reg?, data...]` (register optional if latched)
+- Read request: `[0x01, addr, reg?, num_bytes]` → Bridge replies `num_bytes` of data (up to 16)
 
-### UART (`/tmp/thejas_uart.sock`)
-**From Emulator → Bridge:** 1 byte per TX (THR write).
+### UART0/UART1/UART2 (`/tmp/thejas_uart0/1/2.sock`)
+**From Emulator → Bridge:** 1 byte per TX (THR write) on the UART's own socket.
 **From Bridge → Emulator:** 1 byte per RX (emulator reads via `ipc.recv()` into RX buffer).
 
 ### ADC (`/tmp/thejas_adc.sock`)
@@ -205,14 +215,14 @@ The following table documents what the Gazebo/bridge side actually simulates for
 | **IMU (MPU-6000/ICM-20602)** | SPI socket (`/tmp/thejas_spi.sock`) + virtual register model | IMU sensor publishing 7×double (56B) on UDP 9002: timestamp, ax, ay, az, gx, gy, gy | `spi_imu_server()`: MPU-6000 register emulation (WHO_AM_I=0x68, burst read 0x3B–0x48). Converts SI units to register LSBs. | Downcast to int16 (MPU-6000 raw LSB format) occurs in `tools/sitl_bridge.py::udp_imu_receiver()` lines 77–82; SPI virtual registers only ever hold int16-width data. Synthetic fallback when Gazebo data unavailable (sin/cos wave). Converts m/s² → 16384 LSB/g, rad/s → 16.4 LSB/(deg/s) |
 | **Barometer (MS5611)** | I2C socket (`/tmp/thejas_i2c.sock`) + virtual EEPROM at 0x50 | Baro sensor (pressure/temperature) | `i2c_sensor_server()`: Handles MS5611 commands (0x1E reset, 0x40–0x46 D1/D2 conversion, 0xA0–0xAE PROM read). Returns 24-bit pressure/temp. | Pressure in Pa, temperature in °C. Requires multi-byte read (3 bytes for ADC result) |
 | **Compass (HMC5883L)** | I2C socket (`/tmp/thejas_i2c.sock`) + virtual EEPROM at 0x50 | Compass sensor (3-axis mag) | `i2c_sensor_server()`: Handles HMC5883L registers (0x03–0x08 data, 0x0A status, 0x0B config A, 0x0C config B, 0x0D mode). Returns 16-bit X/Z/Y. | Gain/range configurable via Config B. Continuous measurement mode supported. |
-| **GNSS (NMEA)** | UART socket (`/tmp/thejas_uart.sock`) | GPS NMEA output | `uart_server()`: Forwards NMEA sentences from Gazebo GPS plugin to emulator UART RX. | NMEA parser in firmware (`nmea_parser_feed/parse`) processes $GPGGA, $GPRMC, etc. |
-| **RC Input (SBUS/CRSF/PPM)** | UART socket (`/tmp/thejas_uart.sock`) | N/A | N/A (RC parser in firmware) | Firmware implements SBUS/CRSF/PPM parser (`rc_parser_feed/parse`) fed by UART drain task. |
+| **GNSS (NMEA)** | UART1 socket (`/tmp/thejas_uart1.sock`, 0x1000_1000) | GPS NMEA output | `uart_server()`: Forwards NMEA sentences from Gazebo GPS plugin to emulator UART1 RX. | NMEA parser in firmware (`nmea_parser_feed/parse`) processes $GPGGA, $GPRMC, etc. Independent socket from RC (Patch 1). |
+| **RC Input (SBUS/CRSF/PPM)** | UART2 socket (`/tmp/thejas_uart2.sock`, 0x1000_2000) | N/A | N/A (RC parser in firmware) | Firmware implements SBUS/CRSF/PPM parser (`rc_parser_feed/parse`) fed by UART2 drain task. Independent socket from GNSS (Patch 1). |
 | **Battery/Current/RSSI (ADC)** | ADC socket (`/tmp/thejas_adc.sock`) | Custom analog sensor emulation | `sitl_bridge.py`: Returns voltage/current/RSSI on request `[0x01, channel]` → 2-byte LE u16. | Ch0: battery voltage, Ch1: current, Ch2: RSSI. Clamped to 12-bit (4095). |
 
-**Key Gaps for Emulator Patches:**
-1. **3 UART instances needed** — GNSS and RC tasks currently share one UART socket; cannot be validated independently.
-2. **I2C multi-byte reads** — MS5611 needs 3-byte ADC read; HMC5883L needs 6-byte burst read. Current IPC only supports single-byte reads.
-3. **ADC clamp** — Synthetic values must be clamped to 4095 (12-bit).
+**Resolved by emulator patches (were gaps at audit time):**
+1. ~~3 UART instances needed~~ — DONE (Patch 1): UART0/UART1/UART2 with independent sockets; GNSS and RC tasks validated independently.
+2. ~~I2C multi-byte reads~~ — DONE (Patch 2): MS5611 3-byte ADC reads, HMC5883L 6-byte burst reads via extended IPC protocol.
+3. ~~ADC clamp~~ — DONE: all synthetic and IPC results clamped to 12-bit max 4095.
 
 ---
 
@@ -292,7 +302,7 @@ all: $(TARGETS)
 |--------|----------|--------------------------|----------------|
 | **SRAM Size** | 512 KB | **256 KB** (spec says "believed to be 256 KB") | C-DAC SDK headers, ARIES v3 datasheet |
 | **CLINT `mtime` Frequency** | 1 tick per CPU cycle (variable) | Fixed frequency (typically 32.768 kHz or 1 MHz) | RISC-V CLINT spec, VEGA ET1031 docs |
-| **QSPI Flash** | 16 MB window at 0x4000_0000, read-only | Likely same, but may support write/erase commands | C-DAC SDK QSPI driver |
+| **QSPI Flash** | 16 MB window at 0x4000_0000, writable, file-backed (`--flash-file`), NOR semantics (program clears bits, 4 KB sectors, busy timing) | Real QSPI command set (erase/program opcodes, status register) still differs — verify | C-DAC SDK QSPI driver |
 | **Peripheral Base Addresses** | As documented above | May differ | C-DAC SDK `hal_vega/regs.h` |
 | **PMP Entries** | 16 | Verify | VEGA ET1031 manual |
 | **PLIC Sources** | 4 (UART, Timer, DMA, WDT) | May have more (GPIO, SPI, I2C, ADC, PWM) | C-DAC SDK PLIC mapping |
@@ -350,23 +360,23 @@ all: $(TARGETS)
 
 4. **I2C virtual EEPROM only at address 0x50** — Real sensors (MS5611 at 0x77, HMC5883L at 0x1E) only work via IPC bridge.
 
-5. **UART has no TX FIFO / interrupt** — LSR bits 5-6 always show TX ready (0x60). No THRE interrupt to PLIC.
+5. **UART TX timing is baud-modeled, no FIFO/interrupt** — LSR THRE/TEMT deassert for ~10 bits × MTIME_HZ/baud cycles after each TX write (backpressure is testable). Still no TX FIFO and no THRE interrupt to PLIC.
 
 6. **CLINT `msip` only bit 0 stored** — Write of 0xFF stores 1. Per spec, only bit 0 is valid.
 
-7. **Emulator exits on PC=0** — Firmware jumping to 0 causes clean shutdown. Real hardware would likely reset or trap.
+7. **Emulator exits on PC=0 by default; `--strict-mem` makes it a fault** — Plain runs treat PC=0 as clean shutdown (handy for tests that `jalr x0,0(x0)` to exit). Real hardware would likely reset or trap; use `--strict-mem` for firmware runs.
 
 8. **WDT reset jumps to 0x8000_0000** — This is the SRAM base, not a reset vector. Real hardware likely resets to 0x0000_0000 or flash.
 
-9. **No cycle-accurate pipeline modeling** — Single-cycle execution per instruction. Real THEJAS32 may have pipeline stalls, cache misses, etc.
+9. **No pipeline modeling** — single instruction-retired tick per instruction executed. Real THEJAS32 may have pipeline stalls, cache misses, etc. (Any 1.5-2x hardware margin cited elsewhere is an UNMEASURED ASSUMPTION until remeasured on real hardware.)
 
-10. **QSPI Flash is read-only in emulator** — Real QSPI supports write/erase for parameter storage and logging.
+10. **QSPI Flash is writable with NOR semantics in emulator** — program clears bits only (`&=`), fixed 4 KB sectors erase to 0xFF, 256 B page wrap, busy windows (50k cycles/page program, 20M cycles/sector erase), file-backed via `--flash-file`. Real QSPI command/status-register interface still differs — verify against C-DAC SDK.
 
 ---
 
 ## 9. Recommendations for Firmware Development
 
-1. **Use Timer peripheral (0x1002_0000) for scheduling**, not CLINT `mtime`. Configure prescaler for ~1 µs or ~10 µs tick.
+1. **Use CLINT `mtime` via `MTIME_HZ` in `config.h` for the time base** (emulator: 100 MHz nominal). Read 64-bit `mtime`/`mcycle` with hi/lo/hi re-read loops. The old Timer-peripheral recommendation is superseded.
 
 2. **Implement 64-bit time reading with hi/lo/hi loop** for both CLINT `mtime` and CSR `mcycle`.
 
