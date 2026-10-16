@@ -195,6 +195,9 @@ int vsnprintf(char *str, size_t size, const char *format, va_list args) {
                 }
             } else if (*format == 's') {
                 const char *s = va_arg(args, const char*);
+                if (s == NULL) {
+                    s = "(null)";
+                }
                 while (*s && remaining > 1) {
                     *out++ = *s++;
                     remaining--;
@@ -206,6 +209,10 @@ int vsnprintf(char *str, size_t size, const char *format, va_list args) {
                     remaining--;
                 }
             } else {
+                /* Unsupported specifier (incl. %f/%e/%g: NO float
+                 * formatting in freestanding builds — format integers
+                 * at call sites, e.g. value_mV/1000 + remainder).
+                 * Printed literally so misuse is visible, never silent. */
                 if (remaining > 1) {
                     *out++ = '%';
                     remaining--;

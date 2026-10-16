@@ -120,6 +120,39 @@ static void test_param_bounds(void) {
     printf("test_param_bounds: PASS\n");
 }
 
+/* Test: snprintf edge cases (freestanding libc) */
+/* NOTE: -Wformat is disabled here: %s/NULL, %f-without-arg and intentional
+ * truncation are exactly what this test exercises against OUR snprintf. */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat"
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+static void test_snprintf_null(void) {
+    char buf[64];
+    int n;
+
+    /* %s with NULL prints "(null)", never dereferences */
+    n = snprintf(buf, sizeof(buf), "a%sb", (const char *)NULL);
+    assert(strcmp(buf, "a(null)b") == 0);
+    assert(n == 8);
+
+    /* %d %u %x %c %lu conversions */
+    n = snprintf(buf, sizeof(buf), "%d %u %x %c %lu", -5, 7u, 0xAB, 'Q', 123ul);
+    assert(strcmp(buf, "-5 7 ab Q 123") == 0);
+    (void)n;
+
+    /* truncation stays NUL-terminated within size */
+    n = snprintf(buf, 4, "abcdef");
+    assert(strcmp(buf, "abc") == 0);
+
+    /* float formats unsupported: printed literally, never crash */
+    n = snprintf(buf, sizeof(buf), "%f");
+    assert(strcmp(buf, "%f") == 0);
+    (void)n;
+
+    printf("test_snprintf_null: PASS\n");
+}
+#pragma GCC diagnostic pop
+
 /* Main test runner */
 int main(void) {
     hal_time_init();
@@ -130,6 +163,7 @@ int main(void) {
     test_ctrl_stub();
     test_setpoints();
     test_param_bounds();
+    test_snprintf_null();
 
     printf("=== All Tests Passed ===\n");
     return 0;
