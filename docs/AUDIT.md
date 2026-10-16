@@ -2,9 +2,9 @@
 
 **Date:** 2026-09-28  
 **Auditor:** opencode agent  
-**Emulator Version:** Thejas32rs (commit `28456f72d7bfd4c5c88c1d3f6bfc7f5910a50819`)
+**Emulator Version:** Thejas32rs (commit `2702f25a459cadb3c11b924f3eb345212277e08b`)
 
-**Repository Structure Confirmation:** Single repo, commit `28456f7`. The emulator source is in `src/` and firmware in `firmware/` as sibling directories at this commit. The Rust emulator source at this commit has been verified against the memory map, register layouts, and IPC wire formats documented below.
+**Repository Structure Confirmation:** Single repo, commit `2702f25`. The emulator source is in `src/` and firmware in `firmware/` as sibling directories at this commit. The Rust emulator source at this commit has been verified against the memory map, register layouts, and IPC wire formats documented below.
 
 **Stack High-Water Mark Semantics:** Implemented in `firmware/src/main.c::stack_high_water_mark()`. Stack grows DOWN from `__stack_top`. Scan runs from LOW end (`__bss_end`) upward toward `__stack_top`. Stops on first word where paint `!= 0xDEADBEEF` (i.e., first overwritten word from the deep end). Reports historical maximum stack depth (bytes from deepest overwritten address to `__stack_top`), not current SP position.
 

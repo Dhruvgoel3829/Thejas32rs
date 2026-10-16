@@ -602,4 +602,4 @@ Add table: what Gazebo/bridge actually simulates for each sensor:
   - Copy-to-RAM: entire image in SRAM
 
 ### 6. Emulator Version
-- [x] Replace "emulator version" in AUDIT.md with real git commit hash from Thejas32rs repo (`daedc6c`)
+- [x] Replace "emulator version" in AUDIT.md with real git commit hash from Thejas32rs repo (`2702f25`)
