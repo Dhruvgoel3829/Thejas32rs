@@ -75,7 +75,7 @@ RV_ELF  := $(RV_BUILD_DIR)/firmware.elf
 HOST_ELF := $(HOST_BUILD_DIR)/test_runner
 
 # Test program targets
-TEST_PROGRAMS := uart_isolation_test strict_mem_test qspi_persistence_test i2c_sensor_test
+TEST_PROGRAMS := uart_isolation_test strict_mem_test qspi_persistence_test i2c_sensor_test sram_boundary_test
 
 # Cycle budget benchmarks (linked with libm for sqrtf/sinf/cosf/atan2f)
 BENCH_PROGRAMS := cycle_bench
@@ -147,8 +147,8 @@ EMU_SMOKE_CYCLES := 200000000
 EMU_TEST_OUT := $(RV_BUILD_DIR)/emu-test.log
 
 emu-test: rv32 test-programs
-	@echo "=== Emulator Smoke Test (strict-mem, ~2 firmware-sec) ==="
-	@$(EMU) $(RV_ELF) --max-cycles $(EMU_SMOKE_CYCLES) --strict-mem --test-finished-reg 4096 > $(EMU_TEST_OUT) 2>&1; \
+	@echo "=== Emulator Smoke Test (strict-mem, sram-kb 256, ~2 firmware-sec) ==="
+	@$(EMU) $(RV_ELF) --max-cycles $(EMU_SMOKE_CYCLES) --strict-mem --sram-kb 256 --test-finished-reg 4096 > $(EMU_TEST_OUT) 2>&1; \
 	EC=$$?; \
 	if [ $$EC -ne 0 ]; then echo "FAIL: firmware smoke exited $$EC"; tail -5 $(EMU_TEST_OUT); exit 1; fi; \
 	if grep -q "OVERRUNS DETECTED" $(EMU_TEST_OUT); then echo "FAIL: task overruns detected"; grep "OVERRUNS" $(EMU_TEST_OUT); exit 1; fi; \
@@ -158,6 +158,11 @@ emu-test: rv32 test-programs
 	EC=$$?; \
 	if [ $$EC -eq 0 ]; then echo "FAIL: strict-mem test exited 0, expected fault"; exit 1; fi; \
 	echo "PASS: strict-mem faulted as expected (exit $$EC)"
+	@echo "=== SRAM Boundary Test (0x80040000 must fault at 256 KB) ==="
+	@$(EMU) $(RV_BUILD_DIR)/sram_boundary_test.elf --max-cycles 1000000 --strict-mem --sram-kb 256 > $(RV_BUILD_DIR)/sram-boundary.log 2>&1; \
+	EC=$$?; \
+	if [ $$EC -eq 0 ]; then echo "FAIL: sram boundary write exited 0, expected fault"; exit 1; fi; \
+	echo "PASS: sram boundary faulted as expected (exit $$EC)"
 	@echo "=== QSPI Persistence Test ==="
 	@rm -f $(RV_BUILD_DIR)/emu-flash.bin
 	@$(EMU) $(RV_BUILD_DIR)/qspi_persistence_test.elf --max-cycles 1000000 --flash-file $(RV_BUILD_DIR)/emu-flash.bin > /dev/null 2>&1; \

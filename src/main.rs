@@ -64,6 +64,10 @@ struct Cli {
     /// Test finished register address (sets exit code when written)
     #[arg(long)]
     test_finished_reg: Option<u32>,
+
+    /// SRAM size in KB (default 512; firmware targets 256, `make emu-test` uses 256)
+    #[arg(long, default_value_t = 512)]
+    sram_kb: u32,
 }
 
 struct RawModeGuard;
@@ -84,7 +88,7 @@ impl Drop for RawModeGuard {
 fn main() {
     let cli = Cli::parse();
     let flash_file = cli.flash_file.clone();
-    let mut bus = Bus::new(cli.ipc, flash_file, cli.strict_mem, cli.test_finished_reg);
+    let mut bus = Bus::new(cli.ipc, flash_file, cli.strict_mem, cli.test_finished_reg, cli.sram_kb);
 
     eprintln!("[INFO] Loading ELF: {}", cli.elf);
     if cli.ipc {
@@ -99,11 +103,12 @@ fn main() {
     if let Some(reg) = cli.test_finished_reg {
         eprintln!("[INFO] Test finished register: 0x{:08x}", reg);
     }
+    eprintln!("[INFO] SRAM: {} KB (0x{:08x}-0x{:08x})", cli.sram_kb, 0x8000_0000u32, 0x8000_0000u32 + cli.sram_kb * 1024 - 1);
     let entry_point = bus.load_elf(&cli.elf);
     eprintln!("[INFO] Entry point: 0x{:08x}", entry_point);
 
     let mut cpu = Cpu::new(bus, entry_point);
-    cpu.write_reg(2, 0x8007_0000); // Set sp to top of SRAM
+    cpu.write_reg(2, 0x8000_0000 + cli.sram_kb * 1024); // Set sp to top of SRAM
 
     let mut cycle_count: u64 = 0;
 

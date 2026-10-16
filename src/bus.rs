@@ -17,7 +17,9 @@ use goblin::elf::Elf;
 use std::fs;
 
 pub const RAM_BASE: u32 = 0x8000_0000;
-pub const RAM_SIZE: usize = 512 * 1024; // 512 KB
+/// Default SRAM size (512 KB). Override at runtime with `--sram-kb`
+/// (firmware targets 256 KB; `make emu-test` uses 256).
+pub const RAM_SIZE: usize = 512 * 1024;
 
 pub struct Bus {
     pub ram: Vec<u8>,
@@ -41,11 +43,11 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(enable_ipc: bool, flash_file: Option<String>, strict_mem: bool, test_finished_reg: Option<u32>) -> Self {
+    pub fn new(enable_ipc: bool, flash_file: Option<String>, strict_mem: bool, test_finished_reg: Option<u32>, sram_kb: u32) -> Self {
         let mut uart0 = Uart::new(if enable_ipc { Some("/tmp/thejas_uart0.sock") } else { None });
         uart0.set_console(true);
         Self {
-            ram: vec![0; RAM_SIZE],
+            ram: vec![0; sram_kb as usize * 1024],
             flash: QspiFlash::with_backing_file(flash_file),
             uart0,
             uart1: Uart::new(if enable_ipc { Some("/tmp/thejas_uart1.sock") } else { None }),
@@ -81,7 +83,7 @@ impl Bus {
                 let seg_start = vaddr;
                 let seg_end = vaddr + memsz as u32 - 1;
                 let ram_start = RAM_BASE;
-                let ram_end = RAM_BASE + (RAM_SIZE as u32) - 1;
+                let ram_end = RAM_BASE + (self.ram.len() as u32) - 1;
 
                 if seg_end >= ram_start && seg_start <= ram_end {
                     let load_start = seg_start.max(ram_start);
@@ -156,10 +158,16 @@ impl Bus {
             // Flash XIP Memory Window (0x4000_0000 - 0x40FF_FFFF)
             0x4000_0000..=0x40FF_FFFF => self.flash.read_u8(addr - FLASH_BASE),
 
-            // SRAM (0x8000_0000 - 0x8007_FFFF)
+            // SRAM (0x8000_0000 + sram_kb*1024; see --sram-kb)
             0x8000_0000..=0x8007_FFFF => {
                 let offset = (addr - RAM_BASE) as usize;
-                self.ram[offset]
+                if offset < self.ram.len() {
+                    self.ram[offset]
+                } else if self.strict_mem {
+                    panic!("Strict memory mode: read out of {} KB SRAM at 0x{:08x}", self.ram.len() / 1024, addr);
+                } else {
+                    0
+                }
             }
 
             // Peripherals
@@ -246,10 +254,14 @@ impl Bus {
                 self.flash.write_u8(addr - FLASH_BASE, val);
             }
 
-            // SRAM
+            // SRAM (bounds-checked against configured --sram-kb)
             0x8000_0000..=0x8007_FFFF => {
                 let offset = (addr - RAM_BASE) as usize;
-                self.ram[offset] = val;
+                if offset < self.ram.len() {
+                    self.ram[offset] = val;
+                } else if self.strict_mem {
+                    panic!("Strict memory mode: write out of {} KB SRAM at 0x{:08x}", self.ram.len() / 1024, addr);
+                }
             }
 
             // Peripherals
@@ -354,9 +366,15 @@ impl Bus {
             0x4000_0000..=0x40FF_FFFF => self.flash.read_u16(addr - FLASH_BASE),
             0x8000_0000..=0x8007_FFFF => {
                 let offset = (addr - RAM_BASE) as usize;
-                let b0 = self.ram[offset] as u16;
-                let b1 = self.ram[offset + 1] as u16;
-                b0 | (b1 << 8)
+                if offset + 2 <= self.ram.len() {
+                    let b0 = self.ram[offset] as u16;
+                    let b1 = self.ram[offset + 1] as u16;
+                    b0 | (b1 << 8)
+                } else if self.strict_mem {
+                    panic!("Strict memory mode: read out of {} KB SRAM at 0x{:08x}", self.ram.len() / 1024, addr);
+                } else {
+                    0
+                }
             }
             _ => (self.read_u8(addr) as u16) | ((self.read_u8(addr.wrapping_add(1)) as u16) << 8),
         }
@@ -376,9 +394,13 @@ impl Bus {
             }
             0x8000_0000..=0x8007_FFFF => {
                 let offset = (addr - RAM_BASE) as usize;
-                let bytes = val.to_le_bytes();
-                self.ram[offset] = bytes[0];
-                self.ram[offset + 1] = bytes[1];
+                if offset + 2 <= self.ram.len() {
+                    let bytes = val.to_le_bytes();
+                    self.ram[offset] = bytes[0];
+                    self.ram[offset + 1] = bytes[1];
+                } else if self.strict_mem {
+                    panic!("Strict memory mode: write out of {} KB SRAM at 0x{:08x}", self.ram.len() / 1024, addr);
+                }
             }
             _ => {
                 self.write_u8(addr, (val & 0xFF) as u8);
@@ -392,11 +414,17 @@ impl Bus {
             0x4000_0000..=0x40FF_FFFF => self.flash.read_u32(addr - FLASH_BASE),
             0x8000_0000..=0x8007_FFFF => {
                 let offset = (addr - RAM_BASE) as usize;
-                let b0 = self.ram[offset] as u32;
-                let b1 = self.ram[offset + 1] as u32;
-                let b2 = self.ram[offset + 2] as u32;
-                let b3 = self.ram[offset + 3] as u32;
-                b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
+                if offset + 4 <= self.ram.len() {
+                    let b0 = self.ram[offset] as u32;
+                    let b1 = self.ram[offset + 1] as u32;
+                    let b2 = self.ram[offset + 2] as u32;
+                    let b3 = self.ram[offset + 3] as u32;
+                    b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
+                } else if self.strict_mem {
+                    panic!("Strict memory mode: read out of {} KB SRAM at 0x{:08x}", self.ram.len() / 1024, addr);
+                } else {
+                    0
+                }
             }
             0x0200_0000..=0x0200_FFFF => self.clint.read_u32(addr - CLINT_BASE),
             0x0C00_0000..=0x0C3F_FFFF => self.plic.read_u32(addr - PLIC_BASE),
@@ -440,8 +468,12 @@ impl Bus {
             }
             0x8000_0000..=0x8007_FFFF => {
                 let offset = (addr - RAM_BASE) as usize;
-                let bytes = val.to_le_bytes();
-                self.ram[offset..offset + 4].copy_from_slice(&bytes);
+                if offset + 4 <= self.ram.len() {
+                    let bytes = val.to_le_bytes();
+                    self.ram[offset..offset + 4].copy_from_slice(&bytes);
+                } else if self.strict_mem {
+                    panic!("Strict memory mode: write out of {} KB SRAM at 0x{:08x}", self.ram.len() / 1024, addr);
+                }
             }
             0x0200_0000..=0x0200_FFFF => self.clint.write_u32(addr - CLINT_BASE, val),
             0x0C00_0000..=0x0C3F_FFFF => self.plic.write_u32(addr - PLIC_BASE, val),

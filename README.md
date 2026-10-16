@@ -113,6 +113,7 @@ cargo build --release
 | `--gdb-port` | | Enable GDB server on the specified TCP port |
 | `--ipc` | | Enable IPC mode (Unix sockets for external simulator/sensor bridges) |
 | `--flash-file` | | QSPI flash backing file for persistence across runs (16 MB) |
+| `--sram-kb` | | SRAM size in KB (default 512; real hardware/firmware budget is 256) |
 | `--strict-mem` | | Strict memory mode: fault on unmapped access, PC=0 is fault |
 | `--test-finished-reg` | | Test finished register address (write sets exit code, read returns 0) |
 

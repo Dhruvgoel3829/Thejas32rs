@@ -50,7 +50,7 @@ impl Cpu {
         );
         self.pc = reset_vector;
         self.regs = [0; 32];
-        self.write_reg(2, 0x8007_0000); // Re-initialize SP
+        self.write_reg(2, 0x8000_0000 + self.bus.ram.len() as u32); // Re-initialize SP to top of SRAM
         self.csr = Csr::new();
     }
 
