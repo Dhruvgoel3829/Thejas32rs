@@ -34,6 +34,15 @@
 #define ADC_BASE          0x10080000
 #define PWM_BASE          0x10090000
 
+/* QSPI controller doorbell (minimal erase/status interface; all
+ * sequencing and timing policy lives in firmware hal_emu) */
+#define QSPI_CTRL_BASE    0x100A0000
+#define QSPI_CMD          (QSPI_CTRL_BASE + 0x00)  /* write 1 = erase sector in ARG */
+#define QSPI_ARG          (QSPI_CTRL_BASE + 0x04)  /* erase sector number */
+#define QSPI_STATUS       (QSPI_CTRL_BASE + 0x08)  /* bit 0 = busy */
+#define QSPI_BUSY         0x01
+#define QSPI_CMD_ERASE_SECTOR 1
+
 /* CLINT Registers */
 #define CLINT_MSIP        (CLINT_BASE + 0x0000)
 #define CLINT_MTIMECMP    (CLINT_BASE + 0x4000)

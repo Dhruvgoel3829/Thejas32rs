@@ -32,11 +32,18 @@ static void task_init_pattern(void *arg) {
     }
 }
 
+static flash_op_t g_flash_op;
+static bool g_op_started = false;
+
 static void task_erase_sector(void *arg) {
     (void)arg;
     if (test_stage == 1) {
-        // Erase the sector we'll use
-        if (hal_flash_erase_sector(1)) {  // Sector 1 = 0x40001000
+        // Erase the sector we'll use (chunked: poll to completion)
+        if (!g_op_started) {
+            flash_op_init(&g_flash_op);
+            g_op_started = flash_op_start_erase(&g_flash_op, 1);  // Sector 1 = 0x40001000
+        } else if (flash_op_poll(&g_flash_op)) {
+            g_op_started = false;
             test_stage = 2;
         }
     }
@@ -45,8 +52,12 @@ static void task_erase_sector(void *arg) {
 static void task_write_flash(void *arg) {
     (void)arg;
     if (test_stage == 2) {
-        // Write test pattern to flash
-        if (hal_flash_write(FLASH_TEST_ADDR, write_buf, FLASH_TEST_SIZE)) {
+        // Write test pattern to flash (chunked: poll to completion)
+        if (!g_op_started) {
+            flash_op_init(&g_flash_op);
+            g_op_started = flash_op_start_program(&g_flash_op, FLASH_TEST_ADDR, write_buf, FLASH_TEST_SIZE);
+        } else if (flash_op_poll(&g_flash_op)) {
+            g_op_started = false;
             test_stage = 3;
         }
     }
@@ -172,16 +183,16 @@ int main(void) {
     
     hal_uart_write_nb(UART_ID_TELEM, (uint8_t*)"QSPI FLASH PERSISTENCE TEST\n", 28);
     
-    sched_add_task(task_init_pattern, 100000, "init");
-    sched_add_task(task_erase_sector, 200000, "erase");
-    sched_add_task(task_write_flash, 300000, "write");
-    sched_add_task(task_read_flash, 400000, "read");
-    sched_add_task(task_verify_pattern, 500000, "verify");
-    sched_add_task(task_persistence_check, 600000, "persist_check");
-    sched_add_task(task_report, 2000000, "report");
+    sched_add_task(task_init_pattern, 50000, "init");
+    sched_add_task(task_erase_sector, 50000, "erase");
+    sched_add_task(task_write_flash, 50000, "write");
+    sched_add_task(task_read_flash, 50000, "read");
+    sched_add_task(task_verify_pattern, 50000, "verify");
+    sched_add_task(task_persistence_check, 50000, "persist_check");
+    sched_add_task(task_report, 500000, "report");
     
     // Heartbeat
-    sched_add_task(task_heartbeat, 100000, "heartbeat");
+    sched_add_task(task_heartbeat, 50000, "heartbeat");
     
     time_us_t now_us = 0;
     (void)now_us;

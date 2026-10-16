@@ -3,6 +3,8 @@ use std::path::Path;
 
 pub const FLASH_BASE: u32 = 0x4000_0000;
 pub const FLASH_SIZE: usize = 16 * 1024 * 1024; // 16 MB Flash Window
+/// Minimal controller doorbell window (CMD/ARG/STATUS, see ctrl_read/write)
+pub const QSPI_CTRL_BASE: u32 = 0x100A_0000;
 
 /// NOR flash geometry (matches typical SPI NOR, e.g. Winbond W25Q series)
 pub const FLASH_SECTOR_SIZE: u32 = 4096; // 4 KB erase sectors
@@ -19,6 +21,7 @@ pub struct QspiFlash {
     backing_file: Option<String>,
     dirty: bool,
     busy_cycles: u64,
+    cmd_arg: u32,
 }
 
 impl QspiFlash {
@@ -53,7 +56,7 @@ impl QspiFlash {
             }
         }
 
-        Self { data, backing_file, dirty, busy_cycles: 0 }
+        Self { data, backing_file, dirty, busy_cycles: 0, cmd_arg: 0 }
     }
 
     #[inline(always)]
@@ -82,8 +85,10 @@ impl QspiFlash {
         b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
     }
 
-    /// Write a single byte to flash (NOR page program: only clears bits).
-    /// Writes issued while busy are ignored (real hardware constraint).
+    /// Write a single byte to flash (NOR program: only clears bits).
+    /// Single-byte MMIO programs are modeled as instant (no busy window);
+    /// multi-byte programs and erases set busy (see write_bytes,
+    /// erase_sector). Writes issued while busy are ignored.
     pub fn write_u8(&mut self, offset: u32, val: u8) {
         if self.busy_cycles > 0 {
             return;
@@ -92,14 +97,14 @@ impl QspiFlash {
         if idx < self.data.len() {
             self.data[idx] &= val;
             self.dirty = true;
-            self.busy_cycles = FLASH_PAGE_PROGRAM_CYCLES;
         }
     }
 
-    /// Write multiple bytes to flash (NOR page program).
+    /// Write multiple bytes to flash (one NOR page-program operation).
     /// Programs do not cross 256 B page boundaries: bytes past the end
     /// of the starting page wrap to the start of the SAME page
-    /// (real NOR behavior for cross-page programs).
+    /// (real NOR behavior for cross-page programs). Sets busy once for
+    /// the whole call; calls issued while busy are dropped entirely.
     pub fn write_bytes(&mut self, offset: u32, bytes: &[u8]) {
         if self.busy_cycles > 0 {
             return;
@@ -194,9 +199,36 @@ impl QspiFlash {
         }
     }
 
+
     /// True while an erase or program operation is still busy.
     pub fn is_busy(&self) -> bool {
         self.busy_cycles > 0
+    }
+
+    /// Minimal controller doorbell (the ONLY control interface; all
+    /// sequencing and timing policy lives in firmware hal_emu).
+    /// CMD (offset 0x00): write 1 = erase the sector in ARG.
+    /// ARG (offset 0x04): erase sector number (latched).
+    /// STATUS (offset 0x08): bit 0 = busy (read-only).
+    pub fn ctrl_write(&mut self, offset: u32, val: u32) {
+        match offset {
+            0x00 => {
+                if val == 1 {
+                    let sector = self.cmd_arg;
+                    self.erase_sector(sector);
+                }
+            }
+            0x04 => self.cmd_arg = val,
+            _ => {}
+        }
+    }
+
+    pub fn ctrl_read(&self, offset: u32) -> u32 {
+        match offset {
+            0x04 => self.cmd_arg,
+            0x08 => self.is_busy() as u32,
+            _ => 0,
+        }
     }
 }
 
@@ -244,16 +276,35 @@ mod tests {
     #[test]
     fn test_writes_ignored_while_busy() {
         let mut f = QspiFlash::new();
-        f.write_u8(0, 0x00);
+        // Erase puts the controller busy for a sector-erase window
+        f.erase_sector(0);
         assert!(f.is_busy());
-        // Second write while busy is dropped
-        f.write_u8(1, 0x00);
+        // Byte and multi-byte writes issued while busy are dropped
+        f.write_u8(0, 0x00);
+        f.write_bytes(1, &[0x00]);
+        assert_eq!(f.read_u8(0), 0xFF);
+        assert_eq!(f.read_u8(1), 0xFF);
+        for _ in 0..FLASH_SECTOR_ERASE_CYCLES {
+            f.tick();
+        }
+        assert!(!f.is_busy());
+        // After busy clears, writes land
+        f.write_u8(0, 0x00);
+        assert_eq!(f.read_u8(0), 0x00);
+    }
+
+    #[test]
+    fn test_write_bytes_sets_busy_once() {
+        let mut f = QspiFlash::new();
+        f.write_bytes(0, &[0xAA, 0xBB, 0xCC, 0xDD]);
+        assert!(f.is_busy());
+        // Whole 4-byte op landed despite busy being set by the op itself
+        assert_eq!(f.read_u8(0), 0xAA);
+        assert_eq!(f.read_u8(3), 0xDD);
         for _ in 0..FLASH_PAGE_PROGRAM_CYCLES {
             f.tick();
         }
         assert!(!f.is_busy());
-        assert_eq!(f.read_u8(0), 0x00);
-        assert_eq!(f.read_u8(1), 0xFF); // dropped write left erased value
     }
 
     #[test]

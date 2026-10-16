@@ -146,7 +146,12 @@ EMU := ../target/release/Thejas32rs
 EMU_SMOKE_CYCLES := 200000000
 EMU_TEST_OUT := $(RV_BUILD_DIR)/emu-test.log
 
-emu-test: rv32 test-programs
+# Always rebuild the emulator first: a stale target/release binary silently
+# invalidates every run below (learned the hard way).
+$(EMU): $(wildcard ../src/*.rs ../src/cpu/*.rs ../Cargo.toml)
+	cd .. && cargo build --release
+
+emu-test: rv32 test-programs $(EMU)
 	@echo "=== Emulator Smoke Test (strict-mem, sram-kb 256, ~2 firmware-sec) ==="
 	@$(EMU) $(RV_ELF) --max-cycles $(EMU_SMOKE_CYCLES) --strict-mem --sram-kb 256 --test-finished-reg 4096 > $(EMU_TEST_OUT) 2>&1; \
 	EC=$$?; \

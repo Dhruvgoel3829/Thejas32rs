@@ -7,7 +7,7 @@ use crate::i2c::{I2c, I2C_BASE};
 use crate::i2s::{I2s, I2S_BASE};
 use crate::plic::{Plic, PLIC_BASE};
 use crate::pwm::{Pwm, PWM_BASE};
-use crate::qspi::{QspiFlash, FLASH_BASE};
+use crate::qspi::{QspiFlash, FLASH_BASE, QSPI_CTRL_BASE};
 use crate::spi::{Spi, SPI_BASE};
 use crate::timer::{Timer, TIMER_BASE};
 use crate::uart::{Uart, UART0_BASE, UART1_BASE, UART2_BASE};
@@ -228,6 +228,12 @@ impl Bus {
                 let shift = (offset & 0x3) * 8;
                 ((self.wdt.read_u32(offset & !0x3) >> shift) & 0xFF) as u8
             }
+            // QSPI controller doorbell (CMD/ARG/STATUS)
+            0x100A_0000..=0x100A_0FFF => {
+                let offset = addr - QSPI_CTRL_BASE;
+                let shift = (offset & 0x3) * 8;
+                ((self.flash.ctrl_read(offset & !0x3) >> shift) & 0xFF) as u8
+            }
             _ => {
                 // Strict memory mode: fault on unmapped access
                 if self.strict_mem {
@@ -352,6 +358,15 @@ impl Bus {
                 current = (current & !(0xFF << shift)) | ((val as u32) << shift);
                 self.wdt.write_u32(word_offset, current);
             }
+            // QSPI controller doorbell (CMD/ARG/STATUS)
+            0x100A_0000..=0x100A_0FFF => {
+                let offset = addr - QSPI_CTRL_BASE;
+                let word_offset = offset & !0x3;
+                let mut current = self.flash.ctrl_read(word_offset);
+                let shift = (offset & 0x3) * 8;
+                current = (current & !(0xFF << shift)) | ((val as u32) << shift);
+                self.flash.ctrl_write(word_offset, current);
+            }
             _ => {
                 // Strict memory mode: fault on unmapped access
                 if self.strict_mem {
@@ -443,6 +458,8 @@ impl Bus {
             0x1009_0000..=0x1009_0FFF => self.pwm.read_u32(addr - PWM_BASE),
             0x1006_0000..=0x1006_0FFF => self.dma.read_u32(addr - DMA_BASE),
             0x1007_0000..=0x1007_0FFF => self.wdt.read_u32(addr - WDT_BASE),
+            // QSPI controller doorbell (CMD/ARG/STATUS)
+            0x100A_0000..=0x100A_0FFF => self.flash.ctrl_read(addr - QSPI_CTRL_BASE),
             _ => {
                 // Strict memory mode: fault on unmapped access
                 if self.strict_mem {
@@ -492,6 +509,8 @@ impl Bus {
             0x1009_0000..=0x1009_0FFF => self.pwm.write_u32(addr - PWM_BASE, val),
             0x1006_0000..=0x1006_0FFF => self.dma.write_u32(addr - DMA_BASE, val),
             0x1007_0000..=0x1007_0FFF => self.wdt.write_u32(addr - WDT_BASE, val),
+            // QSPI controller doorbell (CMD/ARG/STATUS)
+            0x100A_0000..=0x100A_0FFF => self.flash.ctrl_write(addr - QSPI_CTRL_BASE, val),
             _ => {
                 // Strict memory mode: fault on unmapped access
                 if self.strict_mem {
