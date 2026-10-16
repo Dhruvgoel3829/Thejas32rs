@@ -241,6 +241,27 @@ typedef struct {
 - Reports high-water mark (minimum free stack) at runtime
 - XIP vs copy-to-RAM recorded as open item in AUDIT.md
 
+### Linker-Symbol Loop Audit (all loops over linker symbols)
+
+Every loop bounded by a linker-defined address was audited for the
+unaligned-bound failure mode (a `!=`/`bne` loop over a 4-byte step never
+terminates if the bound is odd — this exact bug hung boot until `link.ld`
+was fixed). Rules: symbols word-aligned in `link.ld`, loops use bounded
+`<` / `bltu` / `bgeu` comparisons, never `!=` / `bne` on addresses.
+
+| Loop | Location | Bound symbols | Bound check | Alignment |
+|------|----------|---------------|-------------|-----------|
+| BSS zero | `crt0.s` | `__bss_start` → `__bss_end` | `bgeu` skip + `bltu` loop | Both `ALIGN(4)` in `link.ld` |
+| Stack paint (0xDEADBEEF fill) | `src/main.c` | `__bss_end` → `__stack_top` | `while (ptr < top)` | Both word-aligned (`__stack_top` = 0x80040000) |
+| Stack HWM scan | `src/main.c::stack_high_water_mark()` | `__bss_end` → `__stack_top` | `while (ptr < top)` | Same symbols (paint check `!= 0xDEADBEEF` is a *value* test, not a bound — correct) |
+| `.data` copy (RAM init) | N/A — none exists | `__data_start/end` defined but unused at runtime | N/A | Symbols kept `ALIGN(4)` for future XIP copy-to-RAM (open item) |
+| `check-ram` map parse | `Makefile` awk | `__text/data/bss_start/end` | `>` arithmetic only; `==` matches symbol *names*, never address `!=` | N/A (build-time) |
+| Emulator ELF BSS fill | `src/bus.rs::load_elf` | `ram_offset + memsz`, clamped to `ram.len()` | Slice ranges, `min()`-clamped | Host-side, no target symbols |
+
+`.text` bounds (`__text_start/end`) are `ALIGN(4)`-guarded for the same
+reason although no runtime loop uses them today (check-ram uses them for
+size arithmetic only).
+
 ---
 
 ## 8. Build System

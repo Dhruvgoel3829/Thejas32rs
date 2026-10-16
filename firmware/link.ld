@@ -9,9 +9,11 @@ MEMORY
 SECTIONS
 {
     .text : {
+        . = ALIGN(4);
         __text_start = .;
         KEEP(*(.text.entry))
         *(.text .text.*)
+        . = ALIGN(4);
         __text_end = .;
     } > RAM
 
@@ -22,10 +24,11 @@ SECTIONS
     } > RAM
 
     .data : {
-        __data_start = .;
         . = ALIGN(4);
+        __data_start = .;
         *(.data .data.*)
         *(.sdata .sdata.*)
+        . = ALIGN(4);
         __data_end = .;
     } > RAM
 
