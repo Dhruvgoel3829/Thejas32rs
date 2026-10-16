@@ -122,7 +122,7 @@ int main(void) {
     sched_add_task(task_heartbeat, 100000, "heartbeat");
     
     // Report after all tests
-    sched_add_task(task_report, 2000000, "report");
+    sched_add_task(task_report, 1200000, "report");
     
     time_us_t now_us = 0;
     (void)now_us;

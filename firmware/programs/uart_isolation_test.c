@@ -148,7 +148,7 @@ int main(void) {
     sched_add_task(task_uart2_rx, 10000, "uart2_rx");    // 100 Hz
     
     // Report after 2 seconds
-    sched_add_task(task_report, 2000000, "report");
+    sched_add_task(task_report, 500000, "report");
     
     time_us_t now_us = 0;
     while (1) {

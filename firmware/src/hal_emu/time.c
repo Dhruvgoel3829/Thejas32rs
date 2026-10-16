@@ -41,7 +41,11 @@ time_us_t hal_time_us(void) {
         lo = mmio_read32(CLINT_MTIME);
         hi2 = mmio_read32(CLINT_MTIMEH);
     } while (hi != hi2);
-    return ((time_us_t)hi << 32) | lo;
+    /* mtime ticks once per retired instruction; convert to microseconds
+     * via MTIME_HZ (nominal 100 MHz -> 100 ticks/us). Without this scaling,
+     * firmware timeouts and emulator busy windows (UART TX, flash program/
+     * erase) disagree by 100x. */
+    return (((time_us_t)hi << 32) | lo) / (MTIME_HZ / 1000000);
 }
 
 time_ms_t hal_time_ms(void) {

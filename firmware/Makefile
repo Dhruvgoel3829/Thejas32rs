@@ -154,18 +154,18 @@ emu-test: rv32 test-programs
 	if grep -q "OVERRUNS DETECTED" $(EMU_TEST_OUT); then echo "FAIL: task overruns detected"; grep "OVERRUNS" $(EMU_TEST_OUT); exit 1; fi; \
 	echo "PASS: firmware smoke (exit 0, no overruns)"
 	@echo "=== Strict-Mem Negative Test (NULL deref must fault) ==="
-	@$(EMU) $(RV_BUILD_DIR)/strict_mem_test.elf --max-cycles 1000000 --strict-mem > $(RV_BUILD_DIR)/strict-mem.log 2>&1; \
+	@$(EMU) $(RV_BUILD_DIR)/strict_mem_test.elf --max-cycles 100000000 --strict-mem > $(RV_BUILD_DIR)/strict-mem.log 2>&1; \
 	EC=$$?; \
 	if [ $$EC -eq 0 ]; then echo "FAIL: strict-mem test exited 0, expected fault"; exit 1; fi; \
 	echo "PASS: strict-mem faulted as expected (exit $$EC)"
 	@echo "=== SRAM Boundary Test (0x80040000 must fault at 256 KB) ==="
-	@$(EMU) $(RV_BUILD_DIR)/sram_boundary_test.elf --max-cycles 1000000 --strict-mem --sram-kb 256 > $(RV_BUILD_DIR)/sram-boundary.log 2>&1; \
+	@$(EMU) $(RV_BUILD_DIR)/sram_boundary_test.elf --max-cycles 100000000 --strict-mem --sram-kb 256 > $(RV_BUILD_DIR)/sram-boundary.log 2>&1; \
 	EC=$$?; \
 	if [ $$EC -eq 0 ]; then echo "FAIL: sram boundary write exited 0, expected fault"; exit 1; fi; \
 	echo "PASS: sram boundary faulted as expected (exit $$EC)"
 	@echo "=== QSPI Persistence Test ==="
 	@rm -f $(RV_BUILD_DIR)/emu-flash.bin
-	@$(EMU) $(RV_BUILD_DIR)/qspi_persistence_test.elf --max-cycles 1000000 --flash-file $(RV_BUILD_DIR)/emu-flash.bin > /dev/null 2>&1; \
+	@$(EMU) $(RV_BUILD_DIR)/qspi_persistence_test.elf --max-cycles 100000000 --flash-file $(RV_BUILD_DIR)/emu-flash.bin > /dev/null 2>&1; \
 	EC=$$?; \
 	if [ $$EC -ne 0 ]; then echo "FAIL: qspi test pass 1 exited $$EC"; exit 1; fi; \
 	[ -f $(RV_BUILD_DIR)/emu-flash.bin ] || (echo "FAIL: no flash file written"; exit 1); \

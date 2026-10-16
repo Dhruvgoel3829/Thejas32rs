@@ -16,6 +16,8 @@
 
 /* Time base */
 #define MTIME_HZ                100000000     /* CLINT mtime frequency (emulator = 100 MHz nominal) */
+/* NOTE: hal_time_us() divides mtime by (MTIME_HZ/1000000); MTIME_HZ must
+ * stay >= 1 MHz on any port or the divisor becomes 0. */
 
 /* Scheduler task rates (Hz) - final values from M1 profiling */
 #define SCHED_CTRL_HZ           1000          /* Control loop: 1000 Hz */
