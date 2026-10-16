@@ -603,3 +603,30 @@ Add table: what Gazebo/bridge actually simulates for each sensor:
 
 ### 6. Emulator Version
 - [x] Replace "emulator version" in AUDIT.md with real git commit hash from Thejas32rs repo (`2702f25`)
+
+---
+
+## Commit Map (recent history, oldest first)
+
+One commit per concern; pushed history is never rewritten. `2702f25` was
+an exception (a 782-insertion batch), broken down here so it stays
+reviewable:
+
+| Commit | Subject | Concerns |
+|--------|---------|----------|
+| `d70fb1c` | M0: Audit & scaffolding | AUDIT.md, firmware tree, Makefile, HAL headers |
+| `28456f7` | M1 prep: task split, check-ram, MTIME_HZ, state.h v1 | Per-sensor tasks, scheduler profiling fields, time base |
+| `449cce2` | M1 prep: sensor matrix, hash, HWM scan, reorder | AUDIT sensor table, stack paint/HWM, M1 ordering |
+| `b59e281` | Three pre-M1 items | Repo confirmation, HWM semantics, IMU downcast note |
+| `9e8a346` | Patch 1/4: 3 UARTs | `src/uart.rs`, `bus.rs` mapping, cpu PLIC line, firmware UART HAL |
+| `ad32179` | Patch 2/4: I2C multi-byte | `src/i2c.rs` extended protocol, `sitl_bridge.py` server |
+| `a7cc21b` | Patch 3/4: QSPI flash | `src/qspi.rs` writable+file-backed, `bus.rs` write arms, `--flash-file` |
+| `daedc6c` | Patch 4/4: strict-mem + test-reg | `--strict-mem`, `--test-finished-reg`, PC=0 fault |
+| `4e928f0` | Docs for Patch Set 4 | README/AUDIT/ARCHITECTURE/MEMORY updates |
+| `1adaec2` | Behavior tests, baud UART, ADC clamp | 4 test programs, UART TX timing + console flag, ADC `.min(4095)` |
+| `2702f25` | Review items batch (breakdown below) | QSPI NOR; bus test-reg/strict hardening; BSS alignment fix; `vsnprintf %l`; flash chunked API + timing consts; HWM/overrun report; `LIBM`/bench/`emu-test` wiring; `cycle_bench.c`; `CYCLE_BUDGET.md`; doc updates |
+| `dd6e9c7` | Docs pin to `2702f25` | Hash strings only (AUDIT/MEMORY agree on one commit) |
+| `0f97bbc` | `--sram-kb` + bounds checks | Flag, SRAM range checks, SP from RAM size, boundary test, emu-test @256 |
+| `9bb0c2d` | Linker-symbol loop audit | `link.ld` ALIGNs + audit table in ARCHITECTURE.md |
+| `5a489aa` | Loop-budget table; HWM throttle | CYCLE_BUDGET tables, HWM scan @0.1 Hz |
+| `503397e` | vsnprintf NULL + host test | `%s` NULL→`(null)`, no-float policy doc, `test_snprintf_null` |
