@@ -83,3 +83,59 @@ make bench
 ../target/release/Thejas32rs build/rv32/cycle_bench.elf --max-cycles 200000000
 # BENCH lines print on UART0 (console stdout)
 ```
+
+---
+
+## Loop Budget Table (per-task worst case × rate)
+
+Nominal budget: `MTIME_HZ` = 100 MHz → **100 M instructions-retired/s at 1x**.
+Each row: worst-case retired per run × rate = retired/s. Tags say whether
+the figure is MEASURED (this doc) or an ESTIMATE (engineering judgment,
+to be replaced by measurement as modules land).
+
+| Task | Rate | Worst-case retired/run | Load/s | Source |
+|------|------|------------------------|--------|--------|
+| control (stub + 4× PWM) | 1000 Hz | 500 | 0.50 M | ESTIMATE |
+| imu (SPI 14 B burst + scale) | 1000 Hz | 800 | 0.80 M | ESTIMATE |
+| baro (SM step + I2C seq, amortized) | 100 Hz | 1500 | 0.15 M | ESTIMATE |
+| mag (I2C 6 B + scale) | 75 Hz | 500 | 0.04 M | ESTIMATE |
+| gnss_uart (drain ≤64 B + GGA parse) | 100 Hz | 1600 | 0.16 M | MIXED (parse 584 MEASURED) |
+| rc_uart (drain ≤64 B + SBUS parse) | 100 Hz | 1400 | 0.14 M | ESTIMATE |
+| adc (3 ch + scale incl. div) | 100 Hz | 450 | 0.05 M | ESTIMATE |
+| mode_fs (flags + timestamp) | 50 Hz | 200 | 0.01 M | PLACEHOLDER (M2) |
+| mav_rx (drain + parse) | 100 Hz | 1000 | 0.10 M | ESTIMATE (parse 370 MEASURED) |
+| mav_tx (5 msgs × pack) | 10 Hz | 1900 | 0.02 M | ESTIMATE (pack 378 MEASURED) |
+| logger (HWM @0.1 Hz amortized + print) | 10 Hz | 1000 | 0.01 M | ESTIMATE (HWM scan 285k/run throttled ×0.01) |
+| estimator (Mahony proxy) | 1000 Hz | 7260 | 7.26 M | MEASURED (human's estimator replaces this) |
+| **Total** | | | **≈ 9.24 M/s** | |
+
+| Margin | Budget | Load | % of budget | Pass (<50% @2x) |
+|--------|--------|------|-------------|-----------------|
+| 1x (nominal) | 100 M/s | 9.24 M/s | 9.2% | — |
+| 2x (HW margin) | 50 M/s effective | 9.24 M/s | **18.5%** | **PASS** |
+| 3x (pessimistic) | 33.3 M/s effective | 9.24 M/s | 27.7% | info only |
+
+Headroom at 2x is dominated by the estimator proxy (Mahony 7.26 M/s =
+78% of total load). If the human's estimator exceeds ~15 M/s at 1 kHz,
+revisit: lower estimator rate, fixed-point, or LUT trig.
+
+## I/O-Wait Analytic (wall time, NOT retired instructions)
+
+The emulator does not model peripheral bus timing, so I/O wait is analytic
+from **assumed** bus speeds (state assumptions explicitly):
+
+- SPI IMU burst @ assumed 8 MHz: 14 B × 8 b / 8 MHz ≈ **14 µs** per 1 kHz sample (1.4% of period).
+- MS5611 conversion @ datasheet OSR4096: **9 ms wall wait** (non-blocking state machine; zero CPU while waiting) + 3 B read @ assumed 100 kHz I2C ≈ 0.3 ms.
+- HMC5883L 6 B read @ assumed 100 kHz I2C ≈ **0.6 ms** per 13.3 ms period (4.5%).
+- UART TX @ 115200 baud: **~87 µs/byte**; a 100 B telemetry burst costs ~8.7 ms wall — this is why TX uses ring buffers, not why CPU is loaded.
+
+If real bus speeds differ (e.g. 400 kHz I2C fast-mode, 20 MHz SPI), scale
+linearly and update this section.
+
+## Measurement specifics
+
+- NMEA sentence under test (65 chars):
+  `$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47`
+  Cost scales ~linearly with sentence length; 65 chars is representative.
+- MAVLink figures cover **HEARTBEAT (msgid 0)**: 9 B payload, 21 B frame
+  (pack 378.04 / parse+verify 370.07 per invocation).

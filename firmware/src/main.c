@@ -187,9 +187,13 @@ static void task_mavlink_tx(void *arg) {
 static void task_logger(void *arg) {
     (void)arg;
     /* TODO: Flush log buffer to flash */
-    /* Report stack high-water mark */
-    uint32_t hwm = stack_high_water_mark();
-    g_vehicle_state.stack_hwm_bytes = hwm;
+    /* Stack high-water mark: full 224 KB scan costs ~285k retired, so run
+     * it at ~0.1 Hz (every 100th logger run) and report the cached value. */
+    static uint32_t logger_runs = 0;
+    if ((logger_runs % 100) == 0) {
+        g_vehicle_state.stack_hwm_bytes = stack_high_water_mark();
+    }
+    logger_runs++;
 
     /* Overrun report for `make emu-test` (fails on "OVERRUNS DETECTED").
      * Prints once at startup (HWM), then only when the overrun count grows. */
@@ -203,7 +207,7 @@ static void task_logger(void *arg) {
         char buf[96];
         int len = snprintf(buf, sizeof(buf),
             "STACK HWM: %lu bytes free, TASK OVERRUNS: %lu%s\n",
-            (unsigned long)hwm, (unsigned long)total_overruns,
+            (unsigned long)g_vehicle_state.stack_hwm_bytes, (unsigned long)total_overruns,
             total_overruns > 0 ? " OVERRUNS DETECTED" : "");
         hal_uart_write_nb(UART_ID_TELEM, (uint8_t *)buf, (uint16_t)len);
         last_overruns = total_overruns;
