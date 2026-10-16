@@ -52,12 +52,14 @@ RV_SRCS := $(SRC_DIR)/main.c \
            $(SRC_DIR)/hal_emu/pwm.c \
            $(SRC_DIR)/hal_emu/gnss.c \
            $(SRC_DIR)/hal_emu/rc.c \
+           $(SRC_DIR)/hal_emu/flash.c \
            $(SRC_DIR)/libc/string.c \
            $(SRC_DIR)/state/state.c \
            $(SRC_DIR)/ctrl_stub/ctrl_stub.c
 
 HOST_BASE := $(filter-out $(SRC_DIR)/hal_emu/%,$(RV_SRCS))
 HOST_BASE := $(filter-out $(SRC_DIR)/main.c,$(HOST_BASE))
+HOST_BASE := $(filter-out $(SRC_DIR)/hal_emu/flash.c,$(HOST_BASE))
 HOST_SRCS := $(HOST_BASE) \
              $(SRC_DIR)/hal_emu/time_host.c \
              $(SRC_DIR)/hal_emu/hal_host_stubs.c \
@@ -71,8 +73,22 @@ HOST_OBJS := $(patsubst %.c,$(HOST_BUILD_DIR)/%.o,$(HOST_SRCS))
 RV_ELF  := $(RV_BUILD_DIR)/firmware.elf
 HOST_ELF := $(HOST_BUILD_DIR)/test_runner
 
+# Test program targets
+TEST_PROGRAMS := uart_isolation_test strict_mem_test qspi_persistence_test i2c_sensor_test
+
 # Default target
-all: rv32 host-test
+all: rv32 host-test test-programs
+
+# Test programs (exclude main.c to avoid duplicate main)
+TEST_OBJS := $(filter-out $(RV_BUILD_DIR)/src/main.o,$(RV_OBJS))
+
+# Test programs
+test-programs: $(addprefix $(RV_BUILD_DIR)/,$(addsuffix .elf,$(TEST_PROGRAMS)))
+
+$(RV_BUILD_DIR)/%.elf: programs/%.c link.ld crt0.s $(TEST_OBJS) | $(RV_BUILD_DIR)
+	$(RV_CC) $(RV_CFLAGS) $(RV_LDFLAGS) crt0.s $< $(TEST_OBJS) $(LIBGCC) -o $@
+	@echo "=== Test Program: $* ==="
+	@$(RV_SIZE) $@
 
 # RV32 target
 rv32: $(RV_ELF)

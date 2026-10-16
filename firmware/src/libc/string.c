@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdarg.h>
 
 void *memcpy(void *dest, const void *src, size_t n) {
     uint8_t *d = (uint8_t *)dest;
@@ -110,4 +111,110 @@ void *memchr(const void *s, int c, size_t n) {
         p++;
     }
     return NULL;
+}
+
+/* Minimal snprintf implementation */
+int vsnprintf(char *str, size_t size, const char *format, va_list args);
+
+int snprintf(char *str, size_t size, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    int ret = vsnprintf(str, size, format, args);
+    va_end(args);
+    return ret;
+}
+
+/* Minimal vsnprintf implementation - supports %d, %u, %x, %s, %c */
+int vsnprintf(char *str, size_t size, const char *format, va_list args) {
+    char *out = str;
+    size_t remaining = size;
+    
+    if (size == 0) return 0;
+    
+    while (*format && remaining > 1) {
+        if (*format == '%') {
+            format++;
+            if (*format == 'd') {
+                int val = va_arg(args, int);
+                char buf[16];
+                if (val < 0) {
+                    if (remaining > 1) { *out++ = '-'; remaining--; }
+                    val = -val;
+                }
+                // Convert to decimal
+                char *p = buf + 15;
+                *p = '\0';
+                if (val == 0) *--p = '0';
+                while (val > 0) {
+                    *--p = '0' + (val % 10);
+                    val /= 10;
+                }
+                while (*p) {
+                    if (remaining <= 1) break;
+                    *out++ = *p++;
+                    remaining--;
+                }
+            } else if (*format == 'u') {
+                unsigned int val = va_arg(args, unsigned int);
+                char buf[16];
+                char *p = buf + 15;
+                *p = '\0';
+                if (val == 0) *--p = '0';
+                while (val > 0) {
+                    *--p = '0' + (val % 10);
+                    val /= 10;
+                }
+                while (*p) {
+                    if (remaining <= 1) break;
+                    *out++ = *p++;
+                    remaining--;
+                }
+            } else if (*format == 'x') {
+                unsigned int val = va_arg(args, unsigned int);
+                char buf[16];
+                char *p = buf + 15;
+                *p = '\0';
+                if (val == 0) *--p = '0';
+                while (val > 0) {
+                    int digit = val % 16;
+                    *--p = (digit < 10) ? '0' + digit : 'a' + digit - 10;
+                    val /= 16;
+                }
+                while (*p) {
+                    if (remaining <= 1) break;
+                    *out++ = *p++;
+                    remaining--;
+                }
+            } else if (*format == 's') {
+                const char *s = va_arg(args, const char*);
+                while (*s && remaining > 1) {
+                    *out++ = *s++;
+                    remaining--;
+                }
+            } else if (*format == 'c') {
+                char c = (char)va_arg(args, int);
+                if (remaining > 1) {
+                    *out++ = c;
+                    remaining--;
+                }
+            } else {
+                if (remaining > 1) {
+                    *out++ = '%';
+                    remaining--;
+                }
+                if (remaining > 1) {
+                    *out++ = *format;
+                    remaining--;
+                }
+            }
+        } else {
+            if (remaining > 1) {
+                *out++ = *format;
+                remaining--;
+            }
+        }
+        format++;
+    }
+    *out = '\0';
+    return size - remaining;
 }

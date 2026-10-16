@@ -103,3 +103,19 @@ bool hal_mag_read(mag_raw_t *out) {
 
     return true;
 }
+
+bool hal_i2c_init(void) {
+    /* Nothing to init for emulator I2C */
+    return true;
+}
+
+bool hal_i2c_write(uint8_t addr, uint8_t reg, uint8_t len, const uint8_t *data) {
+    mmio_write32(I2C_ADDR, addr);
+    mmio_write32(I2C_CR, I2C_CR_START);
+    mmio_write32(I2C_DATA, reg);
+    for (uint8_t i = 0; i < len; i++) {
+        mmio_write32(I2C_DATA, data[i]);
+    }
+    mmio_write32(I2C_CR, I2C_CR_START);  // Send stop
+    return true;
+}

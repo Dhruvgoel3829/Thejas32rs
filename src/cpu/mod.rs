@@ -177,6 +177,11 @@ impl Cpu {
             self.bus.plic.set_interrupt_pending(3);
         }
 
+        // Tick UARTs for baud-accurate TX timing
+        self.bus.uart0.tick();
+        self.bus.uart1.tick();
+        self.bus.uart2.tick();
+
         // 1. Tick hardware timers and cycle counter
         self.bus.clint.tick();
         self.csr.cycle = self.csr.cycle.wrapping_add(1);

@@ -40,7 +40,7 @@ bool hal_adc_read(adc_raw_t *out) {
     uint32_t raw_rssi = mmio_read32(ADC_DATA);
 
     /* Convert to physical units (placeholder calibration) */
-    /* Emulator synthetic: ch0=4500 (12-bit), 3.3V ref -> 3.62V */
+    /* Emulator synthetic: ch0=3723 (12-bit, clamped to 4095), 3.3V ref -> 3.0V */
     out->batt_mv = (uint16_t)((raw_v * 3300) / 4095);
     out->batt_ma = (uint16_t)((raw_i - 2048) * 1000 / 2048);  /* +/- range */
     out->rssi = (uint16_t)raw_rssi;

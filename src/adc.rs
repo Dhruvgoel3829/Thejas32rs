@@ -81,23 +81,26 @@ impl Adc {
             let mut resp = [0u8; 2];
             let n = ipc.recv(&mut resp);
             if n == 2 {
-                self.data = u16::from_le_bytes(resp);
+                // Clamp to 12-bit range
+                self.data = u16::from_le_bytes(resp).min(4095);
                 self.status |= 0x01; // Data ready
                 return;
             }
         }
 
         // Local simulation: return synthetic values based on channel
-        // Channel 0: Battery voltage (simulate 3.7V -> 12-bit ADC with 3.3V ref)
+        // Channel 0: Battery voltage (~3.0V -> 12-bit ADC with 3.3V ref)
         // Channel 1: Current sensor
         // Channel 2: RSSI
         // Channel 3-7: Other analog inputs
-        self.data = match self.channel {
-            0 => 4500, // ~3.6V battery (12-bit, 3.3V ref -> 4500/4095 * 3.3 = 3.62V)
+        // All values clamped to 12-bit range (0..=4095)
+        let raw: u16 = match self.channel {
+            0 => 3723, // ~3.0V battery (3723/4095 * 3.3V = 3.0V)
             1 => 2048, // Mid-scale current (zero current)
             2 => 3000, // RSSI
             _ => 0,
         };
+        self.data = raw.min(4095);
         self.status |= 0x01; // Data ready
 
         // If continuous mode disabled, disable after one conversion
@@ -144,7 +147,7 @@ mod tests {
         adc.write_u32(ADC_CTRL_OFFSET, 0x01); // Enable, channel 0
         adc.convert();
         assert_eq!(adc.status & 0x01, 0x01); // Data ready
-        assert_eq!(adc.data, 4500); // Battery voltage
+        assert_eq!(adc.data, 3723); // Battery voltage (~3.0V)
     }
 
     #[test]
@@ -177,6 +180,17 @@ mod tests {
         // Write 1 to clear data ready
         adc.write_u32(ADC_STATUS_OFFSET, 0x01);
         assert_eq!(adc.status & 0x01, 0x00);
+    }
+
+    #[test]
+    fn test_adc_clamp_12bit() {
+        let mut adc = Adc::new(false);
+        // All synthetic channels must stay within 12-bit range
+        for ch in 0..8u8 {
+            adc.write_u32(ADC_CTRL_OFFSET, 0x01 | ((ch as u32) << 4));
+            adc.convert();
+            assert!(adc.data <= 4095, "channel {} out of 12-bit range", ch);
+        }
     }
 
     #[test]

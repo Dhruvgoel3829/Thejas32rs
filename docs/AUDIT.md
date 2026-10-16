@@ -141,7 +141,7 @@
 | 0x0C | chan | 32-bit | R/W | Channel select (0-7) |
 
 **Synthetic Values (no IPC):**
-- Channel 0: 4500 (~3.6V battery)
+- Channel 0: 3723 (~3.0V battery, clamped to 12-bit max 4095)
 - Channel 1: 2048 (mid-scale current)
 - Channel 2: 3000 (RSSI)
 - Channels 3-7: 0
